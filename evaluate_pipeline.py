@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-# # Post-process pipeline output to get entity mention clusters
+""" Evaluate fanfiction pipeline for coreference and quote attribution. """
 
 import os
 import re
@@ -14,7 +14,8 @@ import itertools
 import pickle
 from collections import defaultdict
 
-import coref_evaluation_utils as utils
+import evaluation_utils as utils
+import pipeline_coref as coref
 
 
 def load_pipeline_output(predictions_dirpath, fname):
@@ -45,25 +46,6 @@ def preprocess_para(text):
         new_text = new_text.replace(change, new)
 
     return new_text
-
-
-def nth_repl(s, sub, repl, nth):
-    """ From https://stackoverflow.com/questions/35091557/replace-nth-occurrence-of-substring-in-string/35092436#35092436 """
-
-    find = s.find(sub)
-    # if find is not p1 we have found at least one match for the substring
-    i = find != -1
-    # loop util we find the nth or we find no match
-
-    while find != -1 and i != nth:
-        # find + 1 means we start at the last match start index + 1
-        find = s.find(sub, find + 1)
-        i += 1
-    # if i  is equal to nth we found nth matches so replace
-
-    if i == nth:
-        return s[:find]+repl+s[find + len(sub):]
-    return s
 
 
 def fix_pipeline_token_misalignment(misaligned_rows, sys_output, fic_csv):
@@ -168,81 +150,23 @@ def get_pipeline_misaligned_paragraphs(system_output, fic_csv):
     return misaligned_rows
 
 
-def extract_pipeline_entity_mentions(text):
-    """ Return token start and endpoints of entity mentions embedded in text. """
-    
-    token_count = 1 # pointer to current token in subscripted file
-    entities = {} # cluster_name: {(token_id_start, token_id_end), ...}
-    
-    tokens = text.split()
-    
-    for i, token in enumerate(tokens):
-        
-        if token.startswith('($_'): # entity cluster name
-            if not token in entities:
-                entities[token] = set()
-                
-            mention = tokens[i-1] # token before the parentheses mention
-            mention_len = len(mention.split('_'))
-            token_id_start = token_count - 1 # token before the parentheses mention
-            token_id_end = token_id_start + (mention_len - 1)
-            
-            token_count = token_id_end + 1
-                
-            entities[token].add((token_id_start, token_id_end))
-            
-        else:
-            # Advance token count
-            token_count += 1
-            
-    return entities
-    
-
-def extract_pipeline_entity_clusters(system_output, fname, save_path=None):
-    """ For a particular fic, extract entity mentions and group them into associated clusters. """
-
-    predicted_entities = {}
-
-    for row in list(system_output.itertuples()):
-        fic_id = row.fic_id
-        chapter_id = row.chapter_id
-        para_id = row.para_id
-        entities = extract_pipeline_entity_mentions(row.text_tokenized)
-#         print(entities)
-#         print(row.text_tokenized)
-        
-        if not fic_id in predicted_entities:
-            predicted_entities[fic_id] = {}
-        
-        for cluster_name in entities:
-            if not cluster_name in predicted_entities[fic_id]:
-                predicted_entities[fic_id][cluster_name] = set()
-            
-            for mention in entities[cluster_name]:
-                token_id_start = mention[0]
-                token_id_end = mention[1]
-                predicted_entities[fic_id][cluster_name].add((chapter_id, para_id, token_id_start, token_id_end))
-
-    if save_path:
-        outpath = os.path.join(save_path, f'pipeline_clusters_{fic_id}.pkl')
-        with open(os.path.join(outpath), 'wb') as f:
-            pickle.dump(predicted_entities, f)
-
-    return predicted_entities
-
-
 def main():
 
     # I/O
     # Input
-    predictions_dirpath = '/data/fanfiction_ao3/annotated_10fandom/test/pipeline_output/char_coref_stories'
-    annotations_dirpath = '/data/fanfiction_ao3/annotated_10fandom/test/entity_clusters'
-    csv_dirpath = '/data/fanfiction_ao3/annotated_10fandom/test/fics/'
+    dataset_dirpath = '/data/fanfiction_ao3_annotated_10fandom/test'
+    coref_annotations_dirpath = os.path.join(dataset_dirpath, 'entity_clusters')
+    quote_annotations_dirpath = os.path.join(dataset_dirpath, 'quote_attribution')
+    csv_dirpath = os.path.join(dataset_dirpath, 'fics')
+    predictions_dirpath = os.path.join(dataset_dirpath, 'pipeline_output/char_coref_stories'
 
     # Output
     predicted_entities_outpath = '/projects/fanfiction-nlp/tmp/predicted_entities/'
 
-    #csv_fnames = [fname for fname in sorted(os.listdir(predictions_dirpath)) if fname.endswith('.csv') and not fname.startswith('sherlock')]
+    # Settings
+    eval_coref = False
+    eval_quote_attribution = True
+
     csv_fnames = [fname for fname in sorted(os.listdir(predictions_dirpath)) if fname.endswith('.csv')]
 
     for fname in csv_fnames:
@@ -274,17 +198,26 @@ def main():
             #print(f"\tFound {len(misaligned_rows)} misaligned rows")
             system_output = fix_pipeline_token_misalignment(misaligned_rows, system_output, fic_csv)
 
-        print("\tExtracting predicted entities and clusters...")
-        sys.stdout.flush()
+        if eval_coref:
+            print("\tExtracting predicted entities and clusters...")
+            sys.stdout.flush()
 
-        ## Extract entity mention tuples, clusters
-        predicted_entities = extract_pipeline_entity_clusters(system_output, fname, save_path=predicted_entities_outpath)
-        gold_entities = utils.extract_gold_entities(annotations_dirpath)
+            ## Extract entity mention tuples, clusters
+            predicted_entities = coref.extract_pipeline_entity_clusters(system_output, fname, save_path=predicted_entities_outpath)
+            gold_entities = utils.extract_gold_character_spans(coref_annotations_dirpath)
 
-        print("\tCalculating LEA...")
-        sys.stdout.flush()
-        utils.calculate_lea(predicted_entities, gold_entities)
-        print()
+            print("\tCalculating LEA...")
+            sys.stdout.flush()
+            utils.calculate_lea(predicted_entities, gold_entities)
+            print()
+
+        if eval_quote_attribution:
+            print("\tExtracting predicted quote attribution...")
+            sys.stdout.flush()
+
+            ## Extract pipeline quote attribution
+            #predicted_quotes = coref.extract_pipeline_quotes(system_output, fname, save_path=predicted_entities_outpath)
+            gold_quotes = utils.extract_gold_character_spans(quote_annotations_dirpath)
 
 
 if __name__ == '__main__':

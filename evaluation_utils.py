@@ -113,8 +113,9 @@ def calculate_lea(predicted_entities, gold_entities):
 
 
 
-def extract_gold_entities(annotations_dirpath):
-    # Load ground-truth annotated entity mentions
+def extract_gold_character_spans(annotations_dirpath):
+    # Load ground-truth annotated entity mentions or quote spans, attributed to each character
+
     gold_entities = {} # fic_id: {cluster_name: {(chapter_id, paragraph_id, token_id_start, token_id_end), ...}}
 
     for fname in sorted(os.listdir(annotations_dirpath)):
