@@ -16,36 +16,13 @@ from collections import defaultdict
 
 import evaluation_utils as utils
 import pipeline_coref as coref
+import pipeline_quote_attribution as qa
+
+from pprint import pprint
 
 
-def load_pipeline_output(predictions_dirpath, fname):
-    return pd.read_csv(os.path.join(predictions_dirpath, fname))
-
-
-def preprocess_para(text):
-
-    new_text = remove_character_tags(text)
-
-    changes = {
-        '’': "'",
-        '‘': "'",
-        '“': '"',
-        '”': '"',
-        "''": '"',
-        '``': '"',
-        '`': "'",
-        '…': "...",
-        '-LRB-': "(",
-        '-RRB-': ")",
-        "--": '—',
-        '«': '"',
-        '»': '"',
-    }
-
-    for change, new in changes.items():
-        new_text = new_text.replace(change, new)
-
-    return new_text
+def load_pipeline_output(coref_predictions_dirpath, fname):
+    return pd.read_csv(os.path.join(coref_predictions_dirpath, fname))
 
 
 def fix_pipeline_token_misalignment(misaligned_rows, sys_output, fic_csv):
@@ -58,9 +35,9 @@ def fix_pipeline_token_misalignment(misaligned_rows, sys_output, fic_csv):
     for selected_chap_id, selected_para_id in zip(misaligned_rows['chapter_id'], misaligned_rows['para_id']):
 
         gold_para = fic_csv.loc[(fic_csv['chapter_id']==selected_chap_id) & (fic_csv['para_id']==selected_para_id), 'text_tokenized'].tolist()[0]
-        gold_tokens = preprocess_para(gold_para).split()
+        gold_tokens = utils.preprocess_para(gold_para).split()
         pipeline_para = system_output.loc[(system_output['chapter_id']==selected_chap_id) & (system_output['para_id']==selected_para_id), 'text_tokenized'].tolist()[0]
-        preprocessed = preprocess_para(pipeline_para)
+        preprocessed = utils.preprocess_para(pipeline_para)
         pipeline_tokens = preprocessed.split()
 
         total_offset = 0
@@ -99,9 +76,6 @@ def fix_pipeline_token_misalignment(misaligned_rows, sys_output, fic_csv):
                         pdb.set_trace()
 
         # Modify paragraph
-        #if selected_para_id == 10:
-        #    pdb.set_trace()
-
         modified_para = preprocessed
         char_diff = 0
         for (old, new, token_index), count in token_replacements.items():
@@ -154,11 +128,12 @@ def main():
 
     # I/O
     # Input
-    dataset_dirpath = '/data/fanfiction_ao3_annotated_10fandom/test'
+    dataset_dirpath = '/data/fanfiction_ao3/annotated_10fandom/dev'
     coref_annotations_dirpath = os.path.join(dataset_dirpath, 'entity_clusters')
     quote_annotations_dirpath = os.path.join(dataset_dirpath, 'quote_attribution')
     csv_dirpath = os.path.join(dataset_dirpath, 'fics')
-    predictions_dirpath = os.path.join(dataset_dirpath, 'pipeline_output/char_coref_stories'
+    coref_predictions_dirpath = os.path.join(dataset_dirpath, 'pipeline_output/char_coref_stories')
+    quote_predictions_dirpath = os.path.join(dataset_dirpath, 'pipeline_output/quote_attribution')
 
     # Output
     predicted_entities_outpath = '/projects/fanfiction-nlp/tmp/predicted_entities/'
@@ -167,12 +142,11 @@ def main():
     eval_coref = False
     eval_quote_attribution = True
 
-    csv_fnames = [fname for fname in sorted(os.listdir(predictions_dirpath)) if fname.endswith('.csv')]
+    csv_fnames = [fname for fname in sorted(os.listdir(coref_predictions_dirpath)) if fname.endswith('.csv')]
 
     for fname in csv_fnames:
         
-        if not fname.endswith('.csv'):
-            continue
+        fandom_fname = fname.split('.')[0]
 
         print(fname)
         sys.stdout.flush()
@@ -180,31 +154,31 @@ def main():
         print("\tLoading files...")
         sys.stdout.flush()
         # Load output, CSV file of fic
-        system_output = load_pipeline_output(predictions_dirpath, fname)
+        system_output = load_pipeline_output(coref_predictions_dirpath, fname)
         fic_csv = utils.load_fic_csv(csv_dirpath, fname)
 
-        print("\tChecking/fixing paragraph breaks...")
-        sys.stdout.flush()
-        ## Check paragraph breaks
-        # Compare number of paragraphs
-        n_diff = check_pipeline_paragraph_breaks(system_output, fic_csv)
-        if n_diff != 0:
-            pdb.set_trace()
-
-        print("\tChecking/fixing token alignment...")
-        sys.stdout.flush()
-        misaligned_rows = get_pipeline_misaligned_paragraphs(system_output, fic_csv)
-        if len(misaligned_rows) > 0:
-            #print(f"\tFound {len(misaligned_rows)} misaligned rows")
-            system_output = fix_pipeline_token_misalignment(misaligned_rows, system_output, fic_csv)
-
         if eval_coref:
+            print("\tChecking/fixing paragraph breaks...")
+            sys.stdout.flush()
+            ## Check paragraph breaks
+            # Compare number of paragraphs
+            n_diff = check_pipeline_paragraph_breaks(system_output, fic_csv)
+            if n_diff != 0:
+                pdb.set_trace()
+
+            print("\tChecking/fixing token alignment...")
+            sys.stdout.flush()
+            misaligned_rows = get_pipeline_misaligned_paragraphs(system_output, fic_csv)
+            if len(misaligned_rows) > 0:
+                #print(f"\tFound {len(misaligned_rows)} misaligned rows")
+                system_output = fix_pipeline_token_misalignment(misaligned_rows, system_output, fic_csv)
+
             print("\tExtracting predicted entities and clusters...")
             sys.stdout.flush()
 
             ## Extract entity mention tuples, clusters
             predicted_entities = coref.extract_pipeline_entity_clusters(system_output, fname, save_path=predicted_entities_outpath)
-            gold_entities = utils.extract_gold_character_spans(coref_annotations_dirpath)
+            gold_entities = utils.extract_gold_character_spans(coref_annotations_dirpath, fname)
 
             print("\tCalculating LEA...")
             sys.stdout.flush()
@@ -216,8 +190,39 @@ def main():
             sys.stdout.flush()
 
             ## Extract pipeline quote attribution
-            #predicted_quotes = coref.extract_pipeline_quotes(system_output, fname, save_path=predicted_entities_outpath)
-            gold_quotes = utils.extract_gold_character_spans(quote_annotations_dirpath)
+            #predicted_quote_entries = qa.pipeline_quote_entries(quote_predictions_dirpath, csv_dirpath, fandom_fname)
+            predicted_quotes = qa.pipeline_quote_entries(quote_predictions_dirpath, csv_dirpath, fandom_fname)
+            #gold_quote_entries = utils.gold_quote_entries(quote_annotations_dirpath, csv_dirpath, fandom_fname)
+            gold_quotes = utils.gold_quotes(quote_annotations_dirpath, fandom_fname)
+
+            if len(gold_quotes) == 0 or len(predicted_quotes) == 0:
+                pdb.set_trace()
+
+            #matched_quotes, unmatched_quotes = utils.compare_quote_entries(predicted_quote_entries, gold_quote_entries)
+            #print(f'matched quotes: {len(matched_quotes)}')
+            #print(f'unmatched quotes: {len(unmatched_quotes)}')
+
+            # Precision, recall of the quote extraction (the markables)
+            matched_quotes, false_positives, false_negatives = utils.match_extracted_quotes(gold_quotes, predicted_quotes)
+            precision = len(matched_quotes)/len(predicted_quotes)
+            recall = len(matched_quotes)/len(gold_quotes)
+            f1 = utils.f_score(precision, recall)
+            print(f'\tExtraction results:')
+            print(f'\t\tPrecision: {precision: .2%} ({len(matched_quotes)}/{len(predicted_quotes)})')
+            print(f'\t\tRecall: {recall: .2%} ({len(matched_quotes)}/{len(gold_quotes)})')
+            print(f'\t\tF-score: {f1: .2%}')
+            pdb.set_trace()
+
+            # Quote attribution accuracy on matched quotes
+            correct_attributions, incorrect_attributions = utils.match_quote_attributions(gold_quotes, matched_quotes)
+            print(f'\tAttribution accuracy:')
+            print(f'\t\tOn matched quote spans: {len(correct_attributions)/len(matched_quotes): .2%} ({len(correct_attributions)}/{len(matched_quotes)})')
+
+            # Quote attribution accuracy on all predicted quotes.
+            # If the predicted quote is not a real quote span, is not a match
+            print(f'\t\tOn all predicted quote spans: {len(correct_attributions)/len(predicted_quotes): .2%} ({len(correct_attributions)}/{len(predicted_quotes)})')
+
+            print()
 
 
 if __name__ == '__main__':

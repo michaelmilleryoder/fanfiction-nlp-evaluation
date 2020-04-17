@@ -5,7 +5,7 @@ import os
 import pdb
 import pickle
 
-import coref_evaluation_utils as utils
+import evaluation_utils as utils
 
 
 def extract_pipeline_entity_mentions(text):
@@ -51,17 +51,14 @@ def extract_pipeline_entity_clusters(system_output, fname, save_path=None):
 #         print(entities)
 #         print(row.text_tokenized)
         
-        if not fic_id in predicted_entities:
-            predicted_entities[fic_id] = {}
-        
         for cluster_name in entities:
             if not cluster_name in predicted_entities[fic_id]:
-                predicted_entities[fic_id][cluster_name] = set()
+                predicted_entities[cluster_name] = set()
             
             for mention in entities[cluster_name]:
                 token_id_start = mention[0]
                 token_id_end = mention[1]
-                predicted_entities[fic_id][cluster_name].add((chapter_id, para_id, token_id_start, token_id_end))
+                predicted_entities[cluster_name].add((chapter_id, para_id, token_id_start, token_id_end))
 
     if save_path:
         outpath = os.path.join(save_path, f'pipeline_clusters_{fic_id}.pkl')
