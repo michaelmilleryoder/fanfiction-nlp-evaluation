@@ -110,7 +110,7 @@ def calculate_lea(predicted_entities, gold_entities):
     print(f"\t\tF-score: {f1: .2%}")
 
 
-def extract_gold_character_spans(annotations_dirpath, fname):
+def extract_gold_spans(annotations_dirpath, fname):
     # Load ground-truth annotated entity mentions or quote spans, attributed to each character
 
     gold_entities = {} # cluster_name: {(chapter_id, paragraph_id, token_id_start, token_id_end), ...}
@@ -158,7 +158,7 @@ def gold_quotes(annotations_dirpath, fandom_fname):
     """ Return Quote objects for annotations """
 
     gold_quotes = []
-    gold_entities = extract_gold_character_spans(annotations_dirpath, f'{fandom_fname}_quote_attribution.csv')
+    gold_entities = extract_gold_spans(annotations_dirpath, f'{fandom_fname}_quote_attribution.csv')
     
     for speaker, entities in gold_entities.items():
         for chap_id, para_id, start_token, end_token in entities:
@@ -170,27 +170,46 @@ def gold_quotes(annotations_dirpath, fandom_fname):
 def match_extracted_quotes(gold_quotes, predicted_quotes):
     """ Match Quote objects just on extracted spans (ignoring speaker assignments) """
 
-    matches = []
+    matched_gold = []
+    matched_predicted = []
     false_positives = []
     false_negatives = []
 
-    for gold_quote in gold_quotes:
+#    for gold_quote in gold_quotes:
+#        match = None
+#        for pred_quote in predicted_quotes:
+#            if gold_quote.extraction_matches(pred_quote):
+#                match = pred_quote
+#                break
+#
+#        if match is not None:
+#            matches.append(pred_quote)
+#        else:
+#            false_negatives.append(gold_quote)
+
+    # Could perhaps redo with sets, intersections if can specify match function
+    for pred_quote in predicted_quotes:
+
         match = None
-        for pred_quote in predicted_quotes:
+        for gold_quote in gold_quotes:
+
             if gold_quote.extraction_matches(pred_quote):
-                match = pred_quote
+                match = gold_quote
                 break
 
         if match is not None:
-            matches.append(pred_quote)
+            matched_gold.append(gold_quote)
+            matched_predicted.append(pred_quote)
         else:
+            false_positives.append(pred_quote)
+        
+    for gold_quote in gold_quotes:
+        if not gold_quote in matched_gold:
             false_negatives.append(gold_quote)
 
-    for pred_quote in predicted_quotes:
-        if not pred_quote in matches:
-            false_positives.append(pred_quote)
+    assert len(matched_gold) == len(matched_predicted)
 
-    return matches, false_positives, false_negatives
+    return matched_gold, matched_predicted, false_positives, false_negatives
 
 
 def match_quote_attributions(gold_quotes, predicted_quotes):
@@ -200,14 +219,10 @@ def match_quote_attributions(gold_quotes, predicted_quotes):
     incorrect_attributions = []
 
     # Check extractions
-    matched_predicted, incorrect_attributions, _ = match_extracted_quotes(gold_quotes, predicted_quotes)
+    matched_gold, matched_predicted, incorrect_attributions, _ = match_extracted_quotes(gold_quotes, predicted_quotes)
 
     # Find matched gold quote
-    for pred_quote in matched_predicted:
-        for gold_quote in gold_quotes:
-            if gold_quote.extraction_matches(pred_quote):
-                matched_quote = gold_quote
-                break
+    for pred_quote, gold_quote in zip(matched_predicted, matched_gold):
     
         # Check attribution
         if characters_match(pred_quote.speaker, gold_quote.speaker):
@@ -221,7 +236,7 @@ def match_quote_attributions(gold_quotes, predicted_quotes):
 def gold_quote_entries(annotations_dirpath, fic_dirpath, fandom_fname):
     """ Return gold quote entries of form  (chap_id, para_id): (speaker, quote) """
 
-    gold_entities = extract_gold_character_spans(annotations_dirpath, f'{fandom_fname}_quote_attribution.csv')
+    gold_entities = extract_gold_spans(annotations_dirpath, f'{fandom_fname}_quote_attribution.csv')
     gold_quotes = extract_gold_quotes(gold_entities, fic_dirpath, fandom_fname)
 
     chap_id = 1 # TODO: handle multiple chapter IDs

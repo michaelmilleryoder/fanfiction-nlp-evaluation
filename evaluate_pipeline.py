@@ -203,24 +203,25 @@ def main():
             #print(f'unmatched quotes: {len(unmatched_quotes)}')
 
             # Precision, recall of the quote extraction (the markables)
-            matched_quotes, false_positives, false_negatives = utils.match_extracted_quotes(gold_quotes, predicted_quotes)
-            precision = len(matched_quotes)/len(predicted_quotes)
-            recall = len(matched_quotes)/len(gold_quotes)
+            matched_gold_quotes, matched_pred_quotes, false_positives, false_negatives = utils.match_extracted_quotes(gold_quotes, predicted_quotes)
+            precision = len(matched_pred_quotes)/len(predicted_quotes)
+            recall = len(matched_gold_quotes)/len(gold_quotes)
             f1 = utils.f_score(precision, recall)
             print(f'\tExtraction results:')
-            print(f'\t\tPrecision: {precision: .2%} ({len(matched_quotes)}/{len(predicted_quotes)})')
-            print(f'\t\tRecall: {recall: .2%} ({len(matched_quotes)}/{len(gold_quotes)})')
+            print(f'\t\tPrecision: {precision: .2%} ({len(matched_pred_quotes)}/{len(predicted_quotes)})')
+            print(f'\t\tRecall: {recall: .2%} ({len(matched_gold_quotes)}/{len(gold_quotes)})')
             print(f'\t\tF-score: {f1: .2%}')
-            pdb.set_trace()
 
             # Quote attribution accuracy on matched quotes
-            correct_attributions, incorrect_attributions = utils.match_quote_attributions(gold_quotes, matched_quotes)
+            correct_attributions, incorrect_attributions = utils.match_quote_attributions(gold_quotes, matched_pred_quotes)
             print(f'\tAttribution accuracy:')
-            print(f'\t\tOn matched quote spans: {len(correct_attributions)/len(matched_quotes): .2%} ({len(correct_attributions)}/{len(matched_quotes)})')
+            print(f'\t\tOn matched quote spans: {len(correct_attributions)/len(matched_pred_quotes): .2%} ({len(correct_attributions)}/{len(matched_pred_quotes)})')
 
             # Quote attribution accuracy on all predicted quotes.
             # If the predicted quote is not a real quote span, is not a match
             print(f'\t\tOn all predicted quote spans: {len(correct_attributions)/len(predicted_quotes): .2%} ({len(correct_attributions)}/{len(predicted_quotes)})')
+
+            pdb.set_trace()
 
             print()
 
