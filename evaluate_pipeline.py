@@ -190,40 +190,14 @@ def main():
             sys.stdout.flush()
 
             ## Extract pipeline quote attribution
-            #predicted_quote_entries = qa.pipeline_quote_entries(quote_predictions_dirpath, csv_dirpath, fandom_fname)
             predicted_quotes = qa.pipeline_quote_entries(quote_predictions_dirpath, csv_dirpath, fandom_fname)
-            #gold_quote_entries = utils.gold_quote_entries(quote_annotations_dirpath, csv_dirpath, fandom_fname)
             gold_quotes = utils.gold_quotes(quote_annotations_dirpath, fandom_fname)
 
             if len(gold_quotes) == 0 or len(predicted_quotes) == 0:
                 pdb.set_trace()
 
-            #matched_quotes, unmatched_quotes = utils.compare_quote_entries(predicted_quote_entries, gold_quote_entries)
-            #print(f'matched quotes: {len(matched_quotes)}')
-            #print(f'unmatched quotes: {len(unmatched_quotes)}')
+            # TODO Evaluator.print_quote_scores
 
-            # Precision, recall of the quote extraction (the markables)
-            matched_gold_quotes, matched_pred_quotes, false_positives, false_negatives = utils.match_extracted_quotes(gold_quotes, predicted_quotes)
-            precision = len(matched_pred_quotes)/len(predicted_quotes)
-            recall = len(matched_gold_quotes)/len(gold_quotes)
-            f1 = utils.f_score(precision, recall)
-            print(f'\tExtraction results:')
-            print(f'\t\tPrecision: {precision: .2%} ({len(matched_pred_quotes)}/{len(predicted_quotes)})')
-            print(f'\t\tRecall: {recall: .2%} ({len(matched_gold_quotes)}/{len(gold_quotes)})')
-            print(f'\t\tF-score: {f1: .2%}')
-
-            # Quote attribution accuracy on matched quotes
-            correct_attributions, incorrect_attributions = utils.match_quote_attributions(gold_quotes, matched_pred_quotes)
-            print(f'\tAttribution accuracy:')
-            print(f'\t\tOn matched quote spans: {len(correct_attributions)/len(matched_pred_quotes): .2%} ({len(correct_attributions)}/{len(matched_pred_quotes)})')
-
-            # Quote attribution accuracy on all predicted quotes.
-            # If the predicted quote is not a real quote span, is not a match
-            print(f'\t\tOn all predicted quote spans: {len(correct_attributions)/len(predicted_quotes): .2%} ({len(correct_attributions)}/{len(predicted_quotes)})')
-
-            pdb.set_trace()
-
-            print()
 
 
 if __name__ == '__main__':

@@ -12,81 +12,88 @@ import pdb
 import itertools
 import pickle
 
+from evaluator import Evaluator
 from booknlp_output import BookNLPOutput
 import evaluation_utils as utils
 
-class BookNLPEvaluator():
-    """ Evaluate BookNLP coreference and quote attribution """
+class BookNLPEvaluator(Evaluator):
+    """ Evaluate BookNLP coreference and quote attribution.
+        The evaluator handles the settings for multiple fics. 
+    """
 
-    def __init__(self, predictions_dirpath, fic_csv_dirpath, 
+    def __init__(self, token_output_dirpath, json_output_dirpath, fic_csv_dirpath, 
                     evaluate_coref=False, evaluate_quotes=False,
                     coref_annotations_dirpath=None,
                     quote_annotations_dirpath=None,
                     predicted_entities_outpath=None,
                     predicted_quotes_outpath=None):
 
-        self.predictions_dirpath = predictions_dirpath
+        self.token_output_dirpath = token_output_dirpath
+        self.json_output_dirpath = json_output_dirpath
         self.fic_csv_dirpath = fic_csv_dirpath
-        self.evaluate_coref = evaluate_coref
-        self.evaluate_quotes = evaluate_quotes
+        self.whether_evaluate_coref = evaluate_coref
+        self.whether_evaluate_quotes = evaluate_quotes
         self.coref_annotations_dirpath = coref_annotations_dirpath
         self.quote_annotations_dirpath = quote_annotations_dirpath
         self.predicted_entities_outpath = predicted_entities_outpath
         self.predicted_quotes_outpath = predicted_quotes_outpath
 
     def evaluate(self):
-        for fname in sorted(os.listdir(self.predictions_dirpath)):
+        for fname in sorted(os.listdir(self.token_output_dirpath)):
+            fandom_fname = fname.split('.')[0]
         
-            print(fname)
+            print(fandom_fname)
             sys.stdout.flush()
 
-            self.evaluate_fic(fname)
+            self.evaluate_fic(fandom_fname)
 
-    def evaluate_fic(self, fname):
-
-        fandom_fname = fname.split('.')[0]
+    def evaluate_fic(self, fandom_fname):
 
         print("\tLoading file...")
         sys.stdout.flush()
         # Load output, CSV file of fic
-        booknlp_output = BookNLPOutput(self.predictions_dirpath, fname, fic_csvpath=os.path.join(self.csv_dirpath, fname))
+        booknlp_output = BookNLPOutput(self.token_output_dirpath, self.json_output_dirpath, fandom_fname, fic_csv_dirpath=self.fic_csv_dirpath)
 
         # Whatever you do, need to align with annotations
         print("\tAligning with annotated fic...")
         sys.stdout.flush()
         booknlp_output.align_with_annotations()
 
-        if self.evaluate_coref:
+        if self.whether_evaluate_coref:
             # TODO: fill in with coref
             pass
 
-        if self.evaluate_quotes:
-            self.evaluate_quotes()
+        if self.whether_evaluate_quotes:
+            self.evaluate_quotes(fandom_fname, booknlp_output)
 
-    def evaluate_quotes(self, fandom_fname):
+    def evaluate_quotes(self, fandom_fname, booknlp_output):
         
         # Quote extraction evaluation
         # Load gold quote spans
         gold_quotes = utils.gold_quotes(self.quote_annotations_dirpath, fandom_fname)
 
         # Load predicted quote spans (from BookNLP output to Quote objects)
-        predicted_quotes = booknlp_output.extract_quotes()
+        booknlp_output.extract_quotes()
 
-        # Quote attribution evaluation
+        # Print scores
+        utils.print_quote_scores(booknlp_output.quotes, gold_quotes)
 
 
 def main():
 
     # I/O
-    predictions_dirpath = '/projects/book-nlp/data/tokens/annotated_10fandom_dev/'
+    # TODO: make argparse command line args
+    token_output_dirpath = '/projects/book-nlp/data/tokens/annotated_10fandom_dev/'
+    json_output_dirpath = '/projects/book-nlp/data/output/annotated_10fandom_dev/'
     fic_csv_dirpath = '/data/fanfiction_ao3/annotated_10fandom/dev/fics/'
 
-    evaluator = BookNLPEvaluator(predictions_dirpath, fic_csv_dirpath,
+    evaluator = BookNLPEvaluator(token_output_dirpath, json_output_dirpath, fic_csv_dirpath,
         evaluate_coref=False, 
         evaluate_quotes=True, 
         coref_annotations_dirpath='/data/fanfiction_ao3/annotated_10fandom/dev/entity_clusters',
+        quote_annotations_dirpath='/data/fanfiction_ao3/annotated_10fandom/dev/quote_attribution',
         predicted_entities_outpath = '/projects/book-nlp/tmp/predicted_entities/',
-        predicted_quotes_outpath = '/projects/book-nlp/tmp/predicted_entities/',
+        predicted_quotes_outpath = '/projects/book-nlp/tmp/predicted_entities/'
         )   
 
     evaluator.evaluate()

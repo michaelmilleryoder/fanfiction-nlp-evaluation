@@ -10,6 +10,99 @@ import pdb
 
 from quote import Quote
 
+def match_extracted_quotes(predicted_quotes, gold_quotes):
+    """ Match Quote objects just on extracted spans (ignoring speaker assignments) """
+
+    matched_gold = []
+    matched_predicted = []
+    false_positives = []
+    false_negatives = []
+
+    # Could perhaps redo with sets, intersections if can specify match functions
+    for pred_quote in predicted_quotes:
+
+        match = None
+        for gold_quote in gold_quotes:
+
+            if gold_quote.extraction_matches(pred_quote):
+                match = gold_quote
+                break
+
+        if match is not None:
+            matched_gold.append(gold_quote)
+            matched_predicted.append(pred_quote)
+        else:
+            false_positives.append(pred_quote)
+        
+    for gold_quote in gold_quotes:
+        if not gold_quote in matched_gold:
+            false_negatives.append(gold_quote)
+
+    assert len(matched_gold) == len(matched_predicted)
+
+    return matched_gold, matched_predicted, false_positives, false_negatives
+
+
+def match_quote_attributions(predicted_quotes, gold_quotes, matched=False, incorrect_extractions=[]):
+    """ Match Quote objects entirely, including speaker attribution if character names match """
+
+    correct_attributions = []
+
+    # Check extractions
+    if not matched:
+        matched_gold, matched_predicted, incorrect_extractions, _ = self.match_extracted_quotes(predicted_quotes, gold_quotes)
+    else:
+        matched_gold, matched_predicted = gold_quotes, predicted_quotes
+
+    incorrect_attributions = incorrect_extractions
+
+    # Find matched gold quote
+    for pred_quote, gold_quote in zip(matched_predicted, matched_gold):
+    
+        # Check attribution
+        if characters_match(pred_quote.speaker, gold_quote.speaker):
+            correct_attributions.append(pred_quote)
+        else:
+            incorrect_attributions.append((pred_quote, gold_quote))
+
+    return correct_attributions, incorrect_attributions
+
+
+def print_quote_scores(predicted_quotes, gold_quotes):
+    """ Prints quote extraction and attribution scores """
+
+    # Precision, recall of the quote extraction (the markables)
+    matched_gold_quotes, matched_pred_quotes, false_positives, false_negatives = match_extracted_quotes(predicted_quotes, gold_quotes)
+    if len(predicted_quotes) == 0:
+        precision = 0
+    else:
+        precision = len(matched_pred_quotes)/len(predicted_quotes)
+    recall = len(matched_gold_quotes)/len(gold_quotes)
+    f1 = f_score(precision, recall)
+    print(f'\tExtraction results:')
+    print(f'\t\tPrecision: {precision: .2%} ({len(matched_pred_quotes)}/{len(predicted_quotes)})')
+    print(f'\t\tRecall: {recall: .2%} ({len(matched_gold_quotes)}/{len(gold_quotes)})')
+    print(f'\t\tF-score: {f1: .2%}')
+
+    # Quote attribution accuracy on matched quotes
+    correct_attributions, incorrect_attributions = match_quote_attributions(matched_pred_quotes, matched_gold_quotes, matched=True, incorrect_extractions=false_positives)
+    if len(matched_pred_quotes) == 0:
+        attribution_accuracy_matched = 0
+    else:
+        attribution_accuracy_matched = len(correct_attributions)/len(matched_pred_quotes)
+    print(f'\tAttribution accuracy:')
+    print(f'\t\tOn matched quote spans: {attribution_accuracy_matched: .2%} ({len(correct_attributions)}/{len(matched_pred_quotes)})')
+
+    # Quote attribution accuracy on all predicted quotes.
+    # If the predicted quote is not a real quote span, is not a match
+    if len(predicted_quotes) == 0:
+        attribution_accuracy_all = 0
+    else:
+        attribution_accuracy_all = len(correct_attributions)/len(predicted_quotes)
+    print(f'\t\tOn all predicted quote spans: {attribution_accuracy_all: .2%} ({len(correct_attributions)}/{len(predicted_quotes)})')
+
+    print()
+
 def fic_stats(fic_dirpath, fname, gold_entities):
     # Length of fic
 
@@ -90,6 +183,8 @@ def lea_precision(predicted_entities, gold_entities):
 
 
 def f_score(precision, recall):
+    if precision + recall == 0:
+        return 0
     return 2 * (precision * recall)/(precision + recall)
 
 
@@ -110,6 +205,7 @@ def calculate_lea(predicted_entities, gold_entities):
     print(f"\t\tF-score: {f1: .2%}")
 
 
+#TODO: should go in an Annotation class
 def extract_gold_spans(annotations_dirpath, fname):
     # Load ground-truth annotated entity mentions or quote spans, attributed to each character
 
@@ -154,6 +250,7 @@ def extract_gold_quotes(gold_entities, fic_dirpath, fandom_fname):
     return gold_quotes
 
 
+#TODO: should go in an Annotation class
 def gold_quotes(annotations_dirpath, fandom_fname):
     """ Return Quote objects for annotations """
 
@@ -165,72 +262,6 @@ def gold_quotes(annotations_dirpath, fandom_fname):
             gold_quotes.append(Quote(chap_id, para_id, start_token, end_token, speaker)) 
 
     return gold_quotes
-
-
-def match_extracted_quotes(gold_quotes, predicted_quotes):
-    """ Match Quote objects just on extracted spans (ignoring speaker assignments) """
-
-    matched_gold = []
-    matched_predicted = []
-    false_positives = []
-    false_negatives = []
-
-#    for gold_quote in gold_quotes:
-#        match = None
-#        for pred_quote in predicted_quotes:
-#            if gold_quote.extraction_matches(pred_quote):
-#                match = pred_quote
-#                break
-#
-#        if match is not None:
-#            matches.append(pred_quote)
-#        else:
-#            false_negatives.append(gold_quote)
-
-    # Could perhaps redo with sets, intersections if can specify match function
-    for pred_quote in predicted_quotes:
-
-        match = None
-        for gold_quote in gold_quotes:
-
-            if gold_quote.extraction_matches(pred_quote):
-                match = gold_quote
-                break
-
-        if match is not None:
-            matched_gold.append(gold_quote)
-            matched_predicted.append(pred_quote)
-        else:
-            false_positives.append(pred_quote)
-        
-    for gold_quote in gold_quotes:
-        if not gold_quote in matched_gold:
-            false_negatives.append(gold_quote)
-
-    assert len(matched_gold) == len(matched_predicted)
-
-    return matched_gold, matched_predicted, false_positives, false_negatives
-
-
-def match_quote_attributions(gold_quotes, predicted_quotes):
-    """ Match Quote objects entirely, including speaker attribution if character names match """
-
-    correct_attributions = []
-    incorrect_attributions = []
-
-    # Check extractions
-    matched_gold, matched_predicted, incorrect_attributions, _ = match_extracted_quotes(gold_quotes, predicted_quotes)
-
-    # Find matched gold quote
-    for pred_quote, gold_quote in zip(matched_predicted, matched_gold):
-    
-        # Check attribution
-        if characters_match(pred_quote.speaker, gold_quote.speaker):
-            correct_attributions.append(pred_quote)
-        else:
-            incorrect_attributions.append((pred_quote, gold_quote))
-
-    return correct_attributions, incorrect_attributions
 
 
 def gold_quote_entries(annotations_dirpath, fic_dirpath, fandom_fname):
@@ -409,24 +440,6 @@ def modify_paragraph_id(para_id, trouble_line):
         
     return new_para_id
 
-
-def find_mismatched_paragraphs(booknlp_output, fic_csv, n_diff):
-    """ Right now only handles 1 mismatch """
-
-    if n_diff != 1:
-        pdb.set_trace()
-
-    trouble_line = -1
-
-    booknlp_paras = booknlp_output.groupby('paragraphId').agg({'originalWord': lambda x: ' '.join(x.tolist())})['originalWord']
-
-    for i, (booknlp_para, fic_para) in enumerate(zip(booknlp_paras, fic_csv['text_tokenized'])):
-        # There will be tokenization differences, so look for dramatic differences
-        if abs(len(booknlp_para.split()) - len(fic_para.split())) > 10:
-            trouble_line = i
-            break
-
-    return trouble_line
 
 
 if __name__ == '__main__': main()
