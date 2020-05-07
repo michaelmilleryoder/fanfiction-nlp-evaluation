@@ -4,7 +4,9 @@ import json
 import pdb
 import csv
 import pandas as pd
+from collections import Counter
 
+from fic_representation import FicRepresentation
 from quote import Quote
 
 def modify_paragraph_id(para_id, trouble_line):
@@ -21,7 +23,7 @@ def modify_paragraph_id(para_id, trouble_line):
     return new_para_id
 
 
-class BookNLPOutput():
+class BookNLPOutput(FicRepresentation):
     """ Holds representation for the BookNLP processed output of a fic. """
 
     def __init__(self, token_output_dirpath, json_output_dirpath, fandom_fname, fic_csv_dirpath=None): 
@@ -30,16 +32,10 @@ class BookNLPOutput():
             csv_dirpath: path to directory with corresponding original fic CSV
         
         """
-        self.fandom_fname = fandom_fname
+        super().__init__(fandom_fname, fic_csv_dirpath=fic_csv_dirpath)
         self.original_token_data = pd.read_csv(os.path.join(token_output_dirpath, f'{fandom_fname}.txt.tokens'), sep='\t', quoting=csv.QUOTE_NONE)
         self.token_data = self.original_token_data.copy()
         self.json_fpath = os.path.join(json_output_dirpath, self.fandom_fname, 'book.id.book')
-        if fic_csv_dirpath is not None:
-            self.fic_csvpath = os.path.join(fic_csv_dirpath, f'{fandom_fname}.csv')
-        self.fic_csv = None
-
-    def load_fic_csv(self):
-        self.fic_csv = pd.read_csv(self.fic_csvpath)
 
     def load_json_output(self):
         with open(self.json_fpath, 'r') as f:
@@ -271,25 +267,68 @@ class BookNLPOutput():
 
         return predicted_entities
 
-    def extract_quotes(self):
-        """ Extract Quote objects from BookNLP output representations. """
+    def extract_bio_quotes(self):
+        """ Extracts Quote objects (unattributed) from BookNLP output token data.
+            Saves to self.quotes
+        """
 
-        self.quotes = []
+        selected_columns = ['chapterId', 'modified_paragraphId', 'modified_tokenId', 'originalWord', 'inQuotation']
+        quote_token_data = self.token_data.loc[self.token_data['inQuotation']!='O', selected_columns]
+
+        current_chapter_id = 0
+        current_para_id = 0
+        current_quote_start = 0
+        current_quote_tokens = []
+        prev_token_id = 0
+
+        for row in list(quote_token_data.itertuples()):
+            if row.inQuotation == 'B-QUOTE': # Start of quote
+                if len(current_quote_tokens) != 0: 
+                    # Store past quote
+                    self.quotes.append(Quote(current_chapter_id, current_para_id, current_quote_start, prev_token_id, text=' '.join(current_quote_tokens)))
+                quote_token_id_start = row.modified_tokenId
+                current_chapter_id = row.chapterId
+                current_para_id = row.modified_paragraphId
+
+            current_quote_tokens.append(row.originalWord)
+            prev_token_id = row.modified_tokenId
+
+    def quote_character_map(self):
+        """ Returns a dictionary of quote texts as keys, character names as values,
+            extracted from BookNLP output json.
+        """
 
         # Load BookNLP JSON
         self.load_json_output()
 
-        # Get Quote objects from all characters from BookNLP JSON
+        # Attribute Quote objects from character JSON
+        quote_character_map = {} # quote_text: character
+
         for char in self.json_data['characters']:
             char_name = char['names'][0]['n'] # take first name as name
             for utterance in char['speaking']:
                 text = utterance['w']
-                quote_length = len(text.split())
-                matching_token_data = self.token_data.loc[self.token_data['tokenId'].isin(range(utterance['i'], utterance['i'] + quote_length))]
-                modified_token_range = matching_token_data['modified_tokenId'].tolist()
-                chap_id = matching_token_data['chapterId'].values[0]
-                para_id = matching_token_data['modified_paragraphId'].values[0]
-                token_start = modified_token_range[0]
-                token_end = modified_token_range[-1]
+                quote_character_map[text] = char_name
 
-                self.quotes.append(Quote(chap_id, para_id, token_start, token_end, char_name, text))
+                #chap_id = matching_token_data['chapterId'].values[0]
+                #para_id = Counter(matching_token_data['modified_paragraphId'].tolist()).most_common(1)[0][0]
+
+                # In case wraps to the next paragraph                
+                #matching_token_data = matching_token_data[matching_token_data['modified_paragraphId']==para_id]
+
+                #modified_token_range = matching_token_data['modified_tokenId'].tolist()
+                #token_start = modified_token_range[0]
+                #token_end = modified_token_range[-1]
+                #assert token_start < token_end
+
+                #if self.fandom_fname.startswith('sherlock') and chap_id==1 and para_id==38:
+                #    pdb.set_trace()
+
+    def extract_quotes(self):
+        """ Extract Quote objects from BookNLP output representations. 
+            Saves to self.quotes
+        """
+
+        self.quotes = self.extract_bio_quotes()
+        #self.quotes.append(Quote(chap_id, para_id, token_start, token_end, char_name, text))
+

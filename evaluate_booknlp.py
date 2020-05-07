@@ -13,6 +13,7 @@ import itertools
 import pickle
 
 from evaluator import Evaluator
+from annotation import QuoteAnnotation
 from booknlp_output import BookNLPOutput
 import evaluation_utils as utils
 
@@ -70,13 +71,13 @@ class BookNLPEvaluator(Evaluator):
         
         # Quote extraction evaluation
         # Load gold quote spans
-        gold_quotes = utils.gold_quotes(self.quote_annotations_dirpath, fandom_fname)
+        gold = QuoteAnnotation(self.quote_annotations_dirpath, fandom_fname, fic_csv_dirpath=self.fic_csv_dirpath)
 
         # Load predicted quote spans (from BookNLP output to Quote objects)
         booknlp_output.extract_quotes()
 
         # Print scores
-        utils.print_quote_scores(booknlp_output.quotes, gold_quotes)
+        utils.print_quote_scores(booknlp_output.quotes, gold.quotes, exact_match=False)
 
 
 def main():

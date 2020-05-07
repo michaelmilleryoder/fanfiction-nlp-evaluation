@@ -10,35 +10,30 @@ import pdb
 
 from quote import Quote
 
-def match_extracted_quotes(predicted_quotes, gold_quotes):
-    """ Match Quote objects just on extracted spans (ignoring speaker assignments) """
+def match_extracted_quotes(predicted_quotes, gold_quotes, exact=True):
+    """ Match Quote objects just on extracted spans (ignoring speaker assignments).
+        Args:
+            predicted_quotes: Quote objects predicted
+            gold_quotes: Quote objects annotated as gold truth
+            exact: whether an exact match on token IDs is necessary.
+                For the FanfictionNLP pipeline, this should be the case.
+                For baseline systems that might have different tokenization,
+                this can be set to False to relax that constraint.
+    """
 
     matched_gold = []
     matched_predicted = []
     false_positives = []
     false_negatives = []
 
-    # Could perhaps redo with sets, intersections if can specify match functions
-    for pred_quote in predicted_quotes:
+    matched = [(predicted, gold) for predicted, gold in itertools.product(predicted_quotes, gold_quotes) if gold.extraction_matches(predicted, exact=exact)]
+    if len(matched) == 0:
+        matched_predicted, matched_gold = [], []
+    else:
+        matched_predicted, matched_gold = list(zip(*matched))
 
-        match = None
-        for gold_quote in gold_quotes:
-
-            if gold_quote.extraction_matches(pred_quote):
-                match = gold_quote
-                break
-
-        if match is not None:
-            matched_gold.append(gold_quote)
-            matched_predicted.append(pred_quote)
-        else:
-            false_positives.append(pred_quote)
-        
-    for gold_quote in gold_quotes:
-        if not gold_quote in matched_gold:
-            false_negatives.append(gold_quote)
-
-    assert len(matched_gold) == len(matched_predicted)
+    false_positives = [predicted for predicted in predicted_quotes if not predicted in matched_predicted]
+    false_negatives = [gold for gold in gold_quotes if not gold in matched_gold]
 
     return matched_gold, matched_predicted, false_positives, false_negatives
 
@@ -61,18 +56,18 @@ def match_quote_attributions(predicted_quotes, gold_quotes, matched=False, incor
     
         # Check attribution
         if characters_match(pred_quote.speaker, gold_quote.speaker):
-            correct_attributions.append(pred_quote)
+            correct_attributions.append((pred_quote, gold_quote))
         else:
             incorrect_attributions.append((pred_quote, gold_quote))
 
     return correct_attributions, incorrect_attributions
 
 
-def print_quote_scores(predicted_quotes, gold_quotes):
+def print_quote_scores(predicted_quotes, gold_quotes, exact_match=True):
     """ Prints quote extraction and attribution scores """
 
     # Precision, recall of the quote extraction (the markables)
-    matched_gold_quotes, matched_pred_quotes, false_positives, false_negatives = match_extracted_quotes(predicted_quotes, gold_quotes)
+    matched_gold_quotes, matched_pred_quotes, false_positives, false_negatives = match_extracted_quotes(predicted_quotes, gold_quotes, exact=exact_match)
     if len(predicted_quotes) == 0:
         precision = 0
     else:
@@ -80,9 +75,9 @@ def print_quote_scores(predicted_quotes, gold_quotes):
     recall = len(matched_gold_quotes)/len(gold_quotes)
     f1 = f_score(precision, recall)
     print(f'\tExtraction results:')
+    print(f'\t\tF-score: {f1: .2%}')
     print(f'\t\tPrecision: {precision: .2%} ({len(matched_pred_quotes)}/{len(predicted_quotes)})')
     print(f'\t\tRecall: {recall: .2%} ({len(matched_gold_quotes)}/{len(gold_quotes)})')
-    print(f'\t\tF-score: {f1: .2%}')
 
     # Quote attribution accuracy on matched quotes
     correct_attributions, incorrect_attributions = match_quote_attributions(matched_pred_quotes, matched_gold_quotes, matched=True, incorrect_extractions=false_positives)
@@ -90,18 +85,25 @@ def print_quote_scores(predicted_quotes, gold_quotes):
         attribution_accuracy_matched = 0
     else:
         attribution_accuracy_matched = len(correct_attributions)/len(matched_pred_quotes)
-    print(f'\tAttribution accuracy:')
-    print(f'\t\tOn matched quote spans: {attribution_accuracy_matched: .2%} ({len(correct_attributions)}/{len(matched_pred_quotes)})')
+    print(f'\tAttribution results:')
 
     # Quote attribution accuracy on all predicted quotes.
     # If the predicted quote is not a real quote span, is not a match
     if len(predicted_quotes) == 0:
-        attribution_accuracy_all = 0
+        attribution_precision = 0
     else:
-        attribution_accuracy_all = len(correct_attributions)/len(predicted_quotes)
-    print(f'\t\tOn all predicted quote spans: {attribution_accuracy_all: .2%} ({len(correct_attributions)}/{len(predicted_quotes)})')
+        attribution_precision = len(correct_attributions)/len(predicted_quotes)
+    attribution_recall = len(correct_attributions)/len(gold_quotes)
+    attribution_f1 = f_score(attribution_precision, attribution_recall)
+    print(f'\t\tF-score: {attribution_f1: .2%}')
+    print(f'\t\tPrecision: {attribution_precision: .2%} ({len(correct_attributions)}/{len(predicted_quotes)})')
+    print(f'\t\tRecall: {attribution_recall: .2%} ({len(correct_attributions)}/{len(gold_quotes)})')
+
+    print(f'\t\tAccuracy on matched quote spans: {attribution_accuracy_matched: .2%} ({len(correct_attributions)}/{len(matched_pred_quotes)})')
 
     print()
+
+    #pdb.set_trace()
 
 def fic_stats(fic_dirpath, fname, gold_entities):
     # Length of fic
@@ -205,87 +207,6 @@ def calculate_lea(predicted_entities, gold_entities):
     print(f"\t\tF-score: {f1: .2%}")
 
 
-#TODO: should go in an Annotation class
-def extract_gold_spans(annotations_dirpath, fname):
-    # Load ground-truth annotated entity mentions or quote spans, attributed to each character
-
-    gold_entities = {} # cluster_name: {(chapter_id, paragraph_id, token_id_start, token_id_end), ...}
-
-    df = pd.read_csv(os.path.join(annotations_dirpath, fname))
-    for colname in df.columns:
-        gold_entities[colname] = set()
-        for mention in df[colname].dropna():
-            parts = mention.split('.')
-            chapter_id = int(parts[0])
-            paragraph_id = int(parts[1])
-            if '-' in parts[2]:
-                token_id_start = int(parts[2].split('-')[0])
-                token_id_end = int(parts[2].split('-')[-1])
-            else:
-                token_id_start = int(parts[2])
-                token_id_end = int(parts[2])
-                
-            gold_entities[colname].add((chapter_id, paragraph_id, token_id_start, token_id_end))
-
-    return gold_entities
-
-
-def extract_gold_quotes(gold_entities, fic_dirpath, fandom_fname):
-
-    gold_quotes = {}
-    
-    # Load actual text
-    fic_data = pd.read_csv(os.path.join(fic_dirpath, f'{fandom_fname}.csv'))
-    fic_data.set_index(['chapter_id', 'para_id'], inplace=True)
-    para_tokens = fic_data['text_tokenized'].str.split().to_dict() # (chap_id, para_id): tokens
-
-    for char, spans in sorted(gold_entities.items()):
-        gold_quotes[char] = list()
-        
-        for span in sorted(spans):
-            chap_id, para_id, start_token_id, end_token_id = span # note that token IDs are 0-start, annotations 1-span
-            quote_text = ' '.join(para_tokens[(chap_id, para_id)][start_token_id-1:end_token_id])
-            gold_quotes[char].append((chap_id, para_id, quote_text))
-            
-    return gold_quotes
-
-
-#TODO: should go in an Annotation class
-def gold_quotes(annotations_dirpath, fandom_fname):
-    """ Return Quote objects for annotations """
-
-    gold_quotes = []
-    gold_entities = extract_gold_spans(annotations_dirpath, f'{fandom_fname}_quote_attribution.csv')
-    
-    for speaker, entities in gold_entities.items():
-        for chap_id, para_id, start_token, end_token in entities:
-            gold_quotes.append(Quote(chap_id, para_id, start_token, end_token, speaker)) 
-
-    return gold_quotes
-
-
-def gold_quote_entries(annotations_dirpath, fic_dirpath, fandom_fname):
-    """ Return gold quote entries of form  (chap_id, para_id): (speaker, quote) """
-
-    gold_entities = extract_gold_spans(annotations_dirpath, f'{fandom_fname}_quote_attribution.csv')
-    gold_quotes = extract_gold_quotes(gold_entities, fic_dirpath, fandom_fname)
-
-    chap_id = 1 # TODO: handle multiple chapter IDs
-
-    gold_quote_entries = {} # (chap_id, para_id): [(character, quote_text)]
-
-    for character, quote_entries in gold_quotes.items():
-        
-        for chap_id, para_id, quote in quote_entries:
-            
-            if not (chap_id, para_id) in gold_quote_entries:
-                gold_quote_entries[(chap_id, para_id)] = []
-                    
-            gold_quote_entries[(chap_id, para_id)].append((character, quote))
-
-    return gold_quote_entries
-
-
 def characters_match(predicted_char, gold_char):
     """ If any parts of the predicted character matches any part of the gold character (fairly lax) """
     
@@ -328,52 +249,6 @@ def preprocess_para(text):
     return new_text
 
 
-def preprocess_quote(quote):
-    """ Return set of lowercased unique tokens from a quote. """
-
-    # Remove ccc_ business
-    #processed_quote = quote.replace('ccc_', '')
-    #processed_quote = processed_quote.replace('_ccc', '')
-    processed_quote = re.sub(r'ccc_.*?_ccc', '', quote)
-
-    # Remove punctuation, lowercase
-    stops = list(punctuation) + ['”', '“']
-    processed_quote = ''.join([c for c in processed_quote.lower() if not c in stops])
-
-    # Replace whitespace with spaces
-    #processed_quote = re.sub(r'\s+', ' ', processed_quote)
-    
-    # Extract unique words
-    processed_words = set(processed_quote.strip().split())
-
-    return processed_words
-
-
-def quotes_match(quotes):
-    
-    processed_quotes = []
-
-    word_match_threshold = .5
-    
-    for quote in quotes:
-
-        #if 'No' in quote:
-        #    pdb.set_trace()
-
-        processed_words = preprocess_quote(quote)
-        processed_quotes.append(processed_words)
-        
-    # Measure unique word overlap
-    n_matches = len(processed_quotes[0].intersection(processed_quotes[1]))
-    if len(processed_quotes[1]) == 0:
-        if len(processed_quotes[0]) < 4: # Probably just the name of a character
-            return True
-        else:
-            return False
-
-    return (n_matches/len(processed_quotes[1])) >= word_match_threshold
-
-
 def span_in_paragraph(span, paragraph):
     """ Measure overlap between tokens in a span and a paragraph
         to make sure the span is contained in the paragraph """
@@ -388,38 +263,6 @@ def span_in_paragraph(span, paragraph):
         return True
 
     return len(matches)/len(processed_span) >= threshold
-
-
-def compare_quote_entries(predicted, gold):
-    
-    matched_extracted_quotes = []
-    unmatched_extracted_quotes = []
-    
-    for chap_id, para_id in predicted:
-        
-        if not (chap_id, para_id) in gold: # didn't extract any quotes in that paragraph
-            unmatched_extracted_quotes += [(chap_id, para_id, speaker, quote) for speaker, quote in predicted[(chap_id, para_id)]]
-            continue
-            
-        gold_para_entries = gold[(chap_id, para_id)]
-        
-        for predicted_character, predicted_quote in predicted[(chap_id, para_id)]:
-            match = False
-            matched_gold = None
-            
-            # Search for match
-            for gold_character, gold_quote in gold_para_entries:
-                if quotes_match((predicted_quote, gold_quote)) and characters_match(predicted_character, gold_character):
-                    match = True
-                    matched_gold = (chap_id, para_id, gold_character, gold_quote)
-                    break
-                    
-            if match:
-                matched_extracted_quotes.append(((chap_id, para_id, predicted_character, predicted_quote),  matched_gold))
-            else:
-                unmatched_extracted_quotes.append((chap_id, para_id, predicted_character, predicted_quote))
-                
-    return matched_extracted_quotes, unmatched_extracted_quotes
 
 
 def load_fic_csv(csv_dirpath, fname):
