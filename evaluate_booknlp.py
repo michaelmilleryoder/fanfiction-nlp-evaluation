@@ -29,15 +29,15 @@ class BookNLPEvaluator(Evaluator):
                     predicted_entities_outpath=None,
                     predicted_quotes_outpath=None):
 
+        super().__init__(fic_csv_dirpath,
+                    evaluate_coref, evaluate_quotes,
+                    coref_annotations_dirpath,
+                    quote_annotations_dirpath,
+                    predicted_entities_outpath,
+                    predicted_quotes_outpath)
+
         self.token_output_dirpath = token_output_dirpath
         self.json_output_dirpath = json_output_dirpath
-        self.fic_csv_dirpath = fic_csv_dirpath
-        self.whether_evaluate_coref = evaluate_coref
-        self.whether_evaluate_quotes = evaluate_quotes
-        self.coref_annotations_dirpath = coref_annotations_dirpath
-        self.quote_annotations_dirpath = quote_annotations_dirpath
-        self.predicted_entities_outpath = predicted_entities_outpath
-        self.predicted_quotes_outpath = predicted_quotes_outpath
 
     def evaluate(self):
         for fname in sorted(os.listdir(self.token_output_dirpath)):
@@ -94,7 +94,6 @@ def main():
         coref_annotations_dirpath='/data/fanfiction_ao3/annotated_10fandom/dev/entity_clusters',
         quote_annotations_dirpath='/data/fanfiction_ao3/annotated_10fandom/dev/quote_attribution',
         predicted_entities_outpath = '/projects/book-nlp/tmp/predicted_entities/',
-        predicted_quotes_outpath = '/projects/book-nlp/tmp/predicted_entities/'
         )   
 
     evaluator.evaluate()

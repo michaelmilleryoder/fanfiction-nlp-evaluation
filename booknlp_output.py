@@ -8,6 +8,7 @@ from collections import Counter
 
 from fic_representation import FicRepresentation
 from quote import Quote
+import evaluation_utils as utils
 
 def modify_paragraph_id(para_id, trouble_line):
     
@@ -280,6 +281,7 @@ class BookNLPOutput(FicRepresentation):
         current_quote_start = 0
         current_quote_tokens = []
         prev_token_id = 0
+        self.quotes = []
 
         for row in list(quote_token_data.itertuples()):
             if row.inQuotation == 'B-QUOTE': # Start of quote
@@ -308,6 +310,7 @@ class BookNLPOutput(FicRepresentation):
             char_name = char['names'][0]['n'] # take first name as name
             for utterance in char['speaking']:
                 text = utterance['w']
+                if text in quote_character_map: pdb.set_trace()
                 quote_character_map[text] = char_name
 
                 #chap_id = matching_token_data['chapterId'].values[0]
@@ -322,13 +325,47 @@ class BookNLPOutput(FicRepresentation):
                 #assert token_start < token_end
 
                 #if self.fandom_fname.startswith('sherlock') and chap_id==1 and para_id==38:
-                #    pdb.set_trace()
+
+        return quote_character_map
 
     def extract_quotes(self):
         """ Extract Quote objects from BookNLP output representations. 
             Saves to self.quotes
         """
 
-        self.quotes = self.extract_bio_quotes()
-        #self.quotes.append(Quote(chap_id, para_id, token_start, token_end, char_name, text))
+        self.quotes = []
 
+        # Load BookNLP JSON
+        self.load_json_output()
+
+        # Get Quote objects from all characters from BookNLP JSON
+        for char in self.json_data['characters']:
+            char_name = char['names'][0]['n'] # take first name as name
+            for utterance in char['speaking']:
+                text = utterance['w']
+                quote_length = len(text.split())
+                matching_token_data = self.token_data.loc[self.token_data['tokenId'].isin(range(utterance['i'], utterance['i'] + quote_length))]
+
+                # TODO: check if the tokens in the matching token data match the quote. If not try to search for the text (verify with sherlock dev)
+                matching_tokens = matching_token_data['originalWord'].tolist()
+                if not Quote(text=' '.join(matching_tokens)).quote_text_matches(Quote(text=text)):
+                    found_quote_indices = utils.sublist_indices(text.split()[1:-1], self.token_data['normalizedWord'].tolist())
+                    if len(found_quote_indices) == 1:
+                        matching_token_data = self.token_data.iloc[found_quote_indices[0][0]-1:found_quote_indices[0][1]+1]
+
+                    else: # quote not found or multiple matches found
+                        continue
+
+
+                chap_id = matching_token_data['chapterId'].values[0]
+                para_id = Counter(matching_token_data['modified_paragraphId'].tolist()).most_common(1)[0][0]
+
+                # In case wraps to the next paragraph                
+                matching_token_data = matching_token_data[matching_token_data['modified_paragraphId']==para_id]
+
+                modified_token_range = matching_token_data['modified_tokenId'].tolist()
+                token_start = modified_token_range[0]
+                token_end = modified_token_range[-1]
+                assert token_start < token_end
+
+                self.quotes.append(Quote(chap_id, para_id, token_start, token_end, char_name, text))

@@ -10,6 +10,18 @@ import pdb
 
 from quote import Quote
 
+
+def sublist_indices(sl,l):
+    """ https://stackoverflow.com/questions/17870544/find-starting-and-ending-indices-of-sublist-in-list """
+    results=[]
+    sll=len(sl)
+    for ind in (i for i,e in enumerate(l) if e==sl[0]):
+        if l[ind:ind+sll]==sl:
+            results.append((ind,ind+sll))
+
+    return results
+
+
 def match_extracted_quotes(predicted_quotes, gold_quotes, exact=True):
     """ Match Quote objects just on extracted spans (ignoring speaker assignments).
         Args:
@@ -102,8 +114,8 @@ def print_quote_scores(predicted_quotes, gold_quotes, exact_match=True):
     print(f'\t\tAccuracy on matched quote spans: {attribution_accuracy_matched: .2%} ({len(correct_attributions)}/{len(matched_pred_quotes)})')
 
     print()
+    pdb.set_trace()
 
-    #pdb.set_trace()
 
 def fic_stats(fic_dirpath, fname, gold_entities):
     # Length of fic
