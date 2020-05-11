@@ -21,8 +21,28 @@ class Quote():
         self.text = text
         self.speaker = speaker
 
+    @staticmethod
+    def get_union_quotes(gold_quotes, baseline_quotes, experimental_quotes):
+        """ Returns the union of all quote spans """
+
+        all_quote_spans = gold_quotes
+        exclusive_baseline = [baseline_quote for baseline_quote in baseline_quotes if not any([baseline_quote.extraction_matches(quote, exact=False) for quote in all_quote_spans])]
+        all_quote_spans += exclusive_baseline
+        exclusive_experimental = [experimental_quote for experimental_quote in experimental_quotes if not any([experimental_quote.extraction_matches(quote, exact=False) for quote in all_quote_spans])]
+        all_quote_spans += exclusive_experimental
+
+        return all_quote_spans
+
     def __repr__(self):
         return f"{self.chap_id}.{self.para_id}.{self.start_token_id}-{self.end_token_id},speaker={self.speaker}"
+
+    def null_character_quote(self):
+        return Quote(
+            chap_id=self.chap_id,
+            para_id=self.para_id, 
+            start_token_id=self.start_token_id, 
+            end_token_id=self.end_token_id, 
+            speaker='NULL')
 
     def extraction_matches(self, other_quote, exact=True):
         """ Check if the extracted quote matches another quote.

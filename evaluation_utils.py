@@ -2,6 +2,7 @@
 
 import pandas as pd
 import os
+import pickle
 import itertools
 import numpy as np
 from string import punctuation
@@ -9,6 +10,12 @@ import re
 import pdb
 
 from quote import Quote
+
+
+def load_pickle(dirpath, fandom_fname):
+    fpath = os.path.join(dirpath, f'{fandom_fname}.pkl')
+    with open(fpath, 'rb') as f:
+        return pickle.load(f)
 
 
 def sublist_indices(sl,l):
@@ -81,10 +88,16 @@ def print_quote_scores(predicted_quotes, gold_quotes, exact_match=True):
     # Precision, recall of the quote extraction (the markables)
     matched_gold_quotes, matched_pred_quotes, false_positives, false_negatives = match_extracted_quotes(predicted_quotes, gold_quotes, exact=exact_match)
     if len(predicted_quotes) == 0:
-        precision = 0
+        if len(gold_quotes) == 0:
+            precision = 1
+        else:
+            precision = 0
     else:
         precision = len(matched_pred_quotes)/len(predicted_quotes)
-    recall = len(matched_gold_quotes)/len(gold_quotes)
+    if len(gold_quotes) == 0:
+        recall = 1 # everyone gets perfect recall if there are no quotes
+    else:
+        recall = len(matched_gold_quotes)/len(gold_quotes)
     f1 = f_score(precision, recall)
     print(f'\tExtraction results:')
     print(f'\t\tF-score: {f1: .2%}')
@@ -102,10 +115,16 @@ def print_quote_scores(predicted_quotes, gold_quotes, exact_match=True):
     # Quote attribution accuracy on all predicted quotes.
     # If the predicted quote is not a real quote span, is not a match
     if len(predicted_quotes) == 0:
-        attribution_precision = 0
+        if len(gold_quotes) == 0:
+            attribution_precision = 1
+        else:
+            attribution_precision = 0
     else:
         attribution_precision = len(correct_attributions)/len(predicted_quotes)
-    attribution_recall = len(correct_attributions)/len(gold_quotes)
+    if len(gold_quotes) == 0:
+        attribution_recall = 1 # everyone gets perfect recall if no quotes
+    else:
+        attribution_recall = len(correct_attributions)/len(gold_quotes)
     attribution_f1 = f_score(attribution_precision, attribution_recall)
     print(f'\t\tF-score: {attribution_f1: .2%}')
     print(f'\t\tPrecision: {attribution_precision: .2%} ({len(correct_attributions)}/{len(predicted_quotes)})')
@@ -114,7 +133,6 @@ def print_quote_scores(predicted_quotes, gold_quotes, exact_match=True):
     print(f'\t\tAccuracy on matched quote spans: {attribution_accuracy_matched: .2%} ({len(correct_attributions)}/{len(matched_pred_quotes)})')
 
     print()
-    pdb.set_trace()
 
 
 def fic_stats(fic_dirpath, fname, gold_entities):

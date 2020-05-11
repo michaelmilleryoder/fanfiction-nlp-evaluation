@@ -1,6 +1,7 @@
 """ Superclass for any extracted elements from a fic. """
 
 import os
+import pickle
 import pandas as pd
 
 class FicRepresentation():
@@ -14,3 +15,11 @@ class FicRepresentation():
 
     def load_fic_csv(self):
         self.fic_csv = pd.read_csv(self.fic_csvpath)
+
+    def save_quotes(self, save_dirpath):
+        """ Save pickle of the quotes in the dirpath """
+        if not os.path.exists(save_dirpath):
+            os.makedirs(save_dirpath)
+        save_fpath = os.path.join(save_dirpath, f'{self.fandom_fname}.pkl')
+        with open(save_fpath, 'wb') as f: 
+            pickle.dump(self.quotes, f)

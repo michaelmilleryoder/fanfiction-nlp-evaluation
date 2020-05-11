@@ -1,6 +1,7 @@
 import os
 import sys
 import json
+import pickle
 import pdb
 import csv
 import pandas as pd
@@ -9,6 +10,7 @@ from collections import Counter
 from fic_representation import FicRepresentation
 from quote import Quote
 import evaluation_utils as utils
+
 
 def modify_paragraph_id(para_id, trouble_line):
     
@@ -27,16 +29,18 @@ def modify_paragraph_id(para_id, trouble_line):
 class BookNLPOutput(FicRepresentation):
     """ Holds representation for the BookNLP processed output of a fic. """
 
-    def __init__(self, token_output_dirpath, json_output_dirpath, fandom_fname, fic_csv_dirpath=None): 
+    def __init__(self, token_output_dirpath, json_output_dirpath, fandom_fname, fic_csv_dirpath=None, token_file_ext='.tokens'): 
         """ 
         Args:
             csv_dirpath: path to directory with corresponding original fic CSV
+            token_file_ext: file extension after fandom_fname for token output files
         
         """
         super().__init__(fandom_fname, fic_csv_dirpath=fic_csv_dirpath)
-        self.original_token_data = pd.read_csv(os.path.join(token_output_dirpath, f'{fandom_fname}.txt.tokens'), sep='\t', quoting=csv.QUOTE_NONE)
+        self.original_token_data = pd.read_csv(os.path.join(token_output_dirpath, f'{fandom_fname}{token_file_ext}'), sep='\t', quoting=csv.QUOTE_NONE)
         self.token_data = self.original_token_data.copy()
         self.json_fpath = os.path.join(json_output_dirpath, self.fandom_fname, 'book.id.book')
+        self.token_file_ext = token_file_ext
 
     def load_json_output(self):
         with open(self.json_fpath, 'r') as f:
@@ -328,7 +332,7 @@ class BookNLPOutput(FicRepresentation):
 
         return quote_character_map
 
-    def extract_quotes(self):
+    def extract_quotes(self, save_dirpath=None):
         """ Extract Quote objects from BookNLP output representations. 
             Saves to self.quotes
         """
@@ -369,3 +373,6 @@ class BookNLPOutput(FicRepresentation):
                 assert token_start < token_end
 
                 self.quotes.append(Quote(chap_id, para_id, token_start, token_end, char_name, text))
+
+        if save_dirpath is not None:
+            self.save_quotes(save_dirpath)

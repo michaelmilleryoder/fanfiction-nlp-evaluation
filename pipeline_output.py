@@ -1,6 +1,7 @@
 """ Class for loading, storing and processing output of pipeline """
 
 import os
+import pickle
 import json
 import pandas as pd
 import pdb
@@ -28,8 +29,9 @@ class PipelineOutput(FicRepresentation):
 
         return predicted_quotes
 
-    def extract_quotes(self):
-        """ Extracts quotes into Quote objects, saves in self.quotes """
+    def extract_quotes(self, save_dirpath=None):
+        """ Extracts quotes into Quote objects, saves in self.quotes, also in tmp directory if specified.
+        """
 
         self.quotes = [] # list of Quote objects
         
@@ -45,3 +47,6 @@ class PipelineOutput(FicRepresentation):
             for quote in quotes:
                 if len(quote['quote']) > 1:
                     self.quotes.append(Quote(chap_id, para_id, quote['start_paragraph_token_id'], quote['end_paragraph_token_id'], character, text=quote['quote']))
+
+        if save_dirpath is not None:
+            self.save_quotes(save_dirpath)

@@ -46,8 +46,8 @@ class QuoteAnnotation(Annotation):
         super().__init__(annotations_dirpath, fandom_fname, file_ext='_quote_attribution.csv', fic_csv_dirpath=fic_csv_dirpath)
         self.load_quotes() # Stores in self.quotes
 
-    def load_quotes(self):
-        """ Saves annotated Quote objects in self.quotes"""
+    def load_quotes(self, save_dirpath=None):
+        """ Saves annotated Quote objects in self.quotes """
 
         self.quotes = []
         gold_entities = self.extract_gold_spans()

@@ -13,7 +13,8 @@ import pdb
 import itertools
 import pickle
 from collections import defaultdict
-from pprint import pprint
+import argparse
+from configparser import ConfigParser
 
 import pipeline_coref as coref
 
@@ -24,7 +25,7 @@ from pipeline_output import PipelineOutput
 
 
 class PipelineEvaluator(Evaluator):
-    """ Evaluate BookNLP coreference and quote attribution.
+    """ Evaluate FanfictionNLP pipeline coreference and quote attribution.
         The evaluator handles the settings for multiple fics. 
     """
 
@@ -41,6 +42,7 @@ class PipelineEvaluator(Evaluator):
                     quote_annotations_dirpath,
                     predicted_entities_outpath,
                     predicted_quotes_outpath)
+
         self.output_dirpath = output_dirpath
         self.char_output_dirpath = os.path.join(output_dirpath, 'char_coref_chars')
 
@@ -97,13 +99,17 @@ class PipelineEvaluator(Evaluator):
             self.evaluate_quotes(fandom_fname, pipeline_output)
 
     def evaluate_quotes(self, fandom_fname, pipeline_output):
+        """ Evaluate quotes for a fic. 
+            Args:
+                save: save Quote objects in a pickled file in a tmp directory
+        """
         
         # Quote extraction evaluation
         # Load gold quote spans
         gold = QuoteAnnotation(self.quote_annotations_dirpath, fandom_fname, fic_csv_dirpath=self.fic_csv_dirpath)
 
         # Load predicted quote spans (from BookNLP output to Quote objects)
-        pipeline_output.extract_quotes()
+        pipeline_output.extract_quotes(save_dirpath=self.predicted_quotes_outpath)
 
         # Print scores
         utils.print_quote_scores(pipeline_output.quotes, gold.quotes, exact_match=True)
@@ -217,20 +223,24 @@ def get_pipeline_misaligned_paragraphs(system_output, fic_csv):
 
 def main():
 
-    # Input
-    dataset_dirpath = '/data/fanfiction_ao3/annotated_10fandom/dev'
-    coref_annotations_dirpath = os.path.join(dataset_dirpath, 'entity_clusters')
-    quote_annotations_dirpath = os.path.join(dataset_dirpath, 'quote_attribution')
-    fic_csv_dirpath = os.path.join(dataset_dirpath, 'fics')
-    output_dirpath = os.path.join(dataset_dirpath, 'pipeline_output')
+    parser = argparse.ArgumentParser(description='Evaluate FanfictionNLP pipeline on coref and quote attribution')
+    parser.add_argument('config_fpath', nargs='?', help='File path of config file')
+    args = parser.parse_args()
+
+    config = ConfigParser(allow_no_value=False)
+    config.read(args.config_fpath)
+
+    fic_csv_dirpath = config.get('Filepaths', 'fic_csv_dirpath')
+    output_dirpath = config.get('Filepaths', 'output_dirpath')
 
     evaluator = PipelineEvaluator(output_dirpath, fic_csv_dirpath,
-        evaluate_coref=False, 
-        evaluate_quotes=True, 
-        coref_annotations_dirpath='/data/fanfiction_ao3/annotated_10fandom/dev/entity_clusters',
-        quote_annotations_dirpath='/data/fanfiction_ao3/annotated_10fandom/dev/quote_attribution',
-        predicted_entities_outpath = '/projects/fanfiction-nlp/tmp/predicted_entities/'
-        )   
+        evaluate_coref=config.getboolean('Settings', 'evaluate_coref'), 
+        evaluate_quotes=config.getboolean('Settings', 'evaluate_quotes'), 
+        coref_annotations_dirpath = config.get('Filepaths', 'coref_annotations_dirpath'),
+        quote_annotations_dirpath = config.get('Filepaths', 'quote_annotations_dirpath'),
+        predicted_entities_outpath = config.get('Filepaths', 'predicted_entities_outpath'),
+        predicted_quotes_outpath = config.get('Filepaths', 'predicted_quotes_outpath'),
+        )
 
     evaluator.evaluate()
 

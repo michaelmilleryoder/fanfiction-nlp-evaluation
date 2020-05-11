@@ -11,11 +11,14 @@ import csv
 import pdb
 import itertools
 import pickle
+from configparser import ConfigParser
+import argparse
 
 from evaluator import Evaluator
 from annotation import QuoteAnnotation
 from booknlp_output import BookNLPOutput
 import evaluation_utils as utils
+
 
 class BookNLPEvaluator(Evaluator):
     """ Evaluate BookNLP coreference and quote attribution.
@@ -27,7 +30,8 @@ class BookNLPEvaluator(Evaluator):
                     coref_annotations_dirpath=None,
                     quote_annotations_dirpath=None,
                     predicted_entities_outpath=None,
-                    predicted_quotes_outpath=None):
+                    predicted_quotes_outpath=None,
+                    token_file_ext='.tokens'):
 
         super().__init__(fic_csv_dirpath,
                     evaluate_coref, evaluate_quotes,
@@ -38,6 +42,7 @@ class BookNLPEvaluator(Evaluator):
 
         self.token_output_dirpath = token_output_dirpath
         self.json_output_dirpath = json_output_dirpath
+        self.token_file_ext = token_file_ext
 
     def evaluate(self):
         for fname in sorted(os.listdir(self.token_output_dirpath)):
@@ -53,7 +58,7 @@ class BookNLPEvaluator(Evaluator):
         print("\tLoading file...")
         sys.stdout.flush()
         # Load output, CSV file of fic
-        booknlp_output = BookNLPOutput(self.token_output_dirpath, self.json_output_dirpath, fandom_fname, fic_csv_dirpath=self.fic_csv_dirpath)
+        booknlp_output = BookNLPOutput(self.token_output_dirpath, self.json_output_dirpath, fandom_fname, fic_csv_dirpath=self.fic_csv_dirpath, token_file_ext=self.token_file_ext)
 
         # Whatever you do, need to align with annotations
         print("\tAligning with annotated fic...")
@@ -74,7 +79,7 @@ class BookNLPEvaluator(Evaluator):
         gold = QuoteAnnotation(self.quote_annotations_dirpath, fandom_fname, fic_csv_dirpath=self.fic_csv_dirpath)
 
         # Load predicted quote spans (from BookNLP output to Quote objects)
-        booknlp_output.extract_quotes()
+        booknlp_output.extract_quotes(save_dirpath=self.predicted_quotes_outpath)
 
         # Print scores
         utils.print_quote_scores(booknlp_output.quotes, gold.quotes, exact_match=False)
@@ -82,19 +87,26 @@ class BookNLPEvaluator(Evaluator):
 
 def main():
 
-    # I/O
-    # TODO: make argparse command line args
-    token_output_dirpath = '/projects/book-nlp/data/tokens/annotated_10fandom_dev/'
-    json_output_dirpath = '/projects/book-nlp/data/output/annotated_10fandom_dev/'
-    fic_csv_dirpath = '/data/fanfiction_ao3/annotated_10fandom/dev/fics/'
+    parser = argparse.ArgumentParser(description='Evaluate BookNLP on coref and quote attribution')
+    parser.add_argument('config_fpath', nargs='?', help='File path of config file')
+    args = parser.parse_args()
+
+    config = ConfigParser(allow_no_value=False)
+    config.read(args.config_fpath)
+
+    token_output_dirpath = str(config.get('Filepaths', 'token_output_dirpath'))
+    json_output_dirpath = str(config.get('Filepaths', 'json_output_dirpath'))
+    fic_csv_dirpath = str(config.get('Filepaths', 'fic_csv_dirpath'))
 
     evaluator = BookNLPEvaluator(token_output_dirpath, json_output_dirpath, fic_csv_dirpath,
-        evaluate_coref=False, 
-        evaluate_quotes=True, 
-        coref_annotations_dirpath='/data/fanfiction_ao3/annotated_10fandom/dev/entity_clusters',
-        quote_annotations_dirpath='/data/fanfiction_ao3/annotated_10fandom/dev/quote_attribution',
-        predicted_entities_outpath = '/projects/book-nlp/tmp/predicted_entities/',
-        )   
+        evaluate_coref=config.getboolean('Settings', 'evaluate_coref'), 
+        evaluate_quotes=config.getboolean('Settings', 'evaluate_quotes'), 
+        coref_annotations_dirpath = str(config.get('Filepaths', 'coref_annotations_dirpath')),
+        quote_annotations_dirpath = str(config.get('Filepaths', 'quote_annotations_dirpath')),
+        predicted_entities_outpath = str(config.get('Filepaths', 'predicted_entities_outpath')),
+        predicted_quotes_outpath = str(config.get('Filepaths', 'predicted_quotes_outpath')),
+        token_file_ext = config.get('Settings', 'token_file_ext')
+        )
 
     evaluator.evaluate()
 
