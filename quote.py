@@ -4,8 +4,10 @@ import re
 import pdb
 from string import punctuation
 
+from span import Span
 
-class Quote():
+
+class Quote(AnnotatedSpan):
 
     def __init__(self, 
             chap_id=None, 
@@ -14,11 +16,9 @@ class Quote():
             end_token_id=None, 
             speaker=None,
             text=None):
-        self.chap_id = chap_id # starts with 1, just like annotations
-        self.para_id = para_id # starts with 1, just like annotations
-        self.start_token_id = start_token_id # starts over every paragraph, starts with 1 just like annotations
-        self.end_token_id = end_token_id
-        self.text = text
+
+        super().__init__(chap_id=chap_id, para_id=para_id, start_token_id=start_token_id, end_token_id=end_token_id, annotation=speaker, text=text)
+
         self.speaker = speaker
 
     @staticmethod

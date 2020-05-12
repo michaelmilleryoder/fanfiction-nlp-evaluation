@@ -1,6 +1,8 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+""" DEPRECATED to pipeline_output.py """
+
 import os
 import pdb
 import pickle
@@ -9,6 +11,7 @@ import evaluation_utils as utils
 
 
 def extract_pipeline_entity_mentions(text):
+    """ DEPRECATED """
     """ Return token start and endpoints of entity mentions embedded in text. """
     
     token_count = 1 # pointer to current token in subscripted file

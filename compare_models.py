@@ -68,8 +68,16 @@ class ModelComparer():
     def compare_fic(self, fandom_fname):
         """ Extract gold, baseline and experimental predictions, save to self.predictions """
 
+        if self.evaluate_coref:
+            # Load coref predictions
+            gold_mentions, baseline_mentions, experimental_mentions = self.load_fic_coref(fandom_fname)
+
+            # Take union of all marked coref spans, annotated with 'null' if don't attribute a character
+            all_quote_spans = Quote.get_union_quotes(gold_quotes, baseline_quotes, experimental_quotes) # This is the order of the output table
+            self.build_ordered_quote_predictions(all_quote_spans, gold_quotes, baseline_quotes, experimental_quotes)
+
         if self.evaluate_quotes:
-            # Quote extraction evaluation
+            # Load quote attributions
             gold_quotes, baseline_quotes, experimental_quotes = self.load_fic_quotes(fandom_fname)
 
             # Take union of all marked quote spans, annotated with 'null' if don't attribute a character
@@ -107,8 +115,18 @@ class ModelComparer():
 
         return gold_quotes, baseline_quotes, experimental_quotes
 
+    def load_fic_coref(self, fandom_fname):
+        """ Load coref predictions and gold mentions for a fic.
+            Returns gold_mentions, baseline_mentions, experimental_mentions
+        """
+        gold_mentions = CorefAnnotation(self.coref_annotations_dirpath, fandom_fname, fic_csv_dirpath=self.fic_csv_dirpath).character_mentions
+        baseline_mentions = utils.load_pickle(self.baseline_coref_dirpath, fandom_fname)
+        experimental_mentions = utils.load_pickle(self.experimental_coref_dirpath, fandom_fname)
+
+        return gold_mentions, baseline_mentions, experimental_mentions
+
     def get_quotes(self, model_name, fandom_fname, model_args, model_kwargs):
-        """ NOT USED """
+        """ DEPRECATED """
         """ Returns a list of quote objects from the FicRepresentation subclass corresponding to the model.
             Args:
                 model_name: which model output out of {pipeline, booknlp}
@@ -142,7 +160,6 @@ class ModelComparer():
                 a += 1
             elif utils.characters_match(baseline_quote.speaker, gold_quote.speaker) and not utils.characters_match(experimental_quote.speaker, gold_quote.speaker):
                 b += 1
-                pdb.set_trace()
             elif not utils.characters_match(baseline_quote.speaker, gold_quote.speaker) and utils.characters_match(experimental_quote.speaker, gold_quote.speaker):
                 c += 1
             else:

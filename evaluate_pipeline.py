@@ -33,14 +33,14 @@ class PipelineEvaluator(Evaluator):
                     evaluate_coref=False, evaluate_quotes=False,
                     coref_annotations_dirpath=None,
                     quote_annotations_dirpath=None,
-                    predicted_entities_outpath=None,
+                    predicted_coref_outpath=None,
                     predicted_quotes_outpath=None):
 
         super().__init__(fic_csv_dirpath,
                     evaluate_coref, evaluate_quotes,
                     coref_annotations_dirpath,
                     quote_annotations_dirpath,
-                    predicted_entities_outpath,
+                    predicted_coref_outpath,
                     predicted_quotes_outpath)
 
         self.output_dirpath = output_dirpath
@@ -85,18 +85,35 @@ class PipelineEvaluator(Evaluator):
             #sys.stdout.flush()
 
             ### Extract entity mention tuples, clusters
-            #predicted_entities = coref.extract_pipeline_entity_clusters(system_output, fname, save_path=predicted_entities_outpath)
+            #predicted_entities = coref.extract_pipeline_entity_clusters(system_output, fname, save_path=predicted_coref_outpath)
             #gold_entities = utils.extract_gold_character_spans(coref_annotations_dirpath, fname)
 
             #print("\tCalculating LEA...")
             #sys.stdout.flush()
             #utils.calculate_lea(predicted_entities, gold_entities)
             #print()
+
+            self.evaluate_coref(fandom_fname, pipeline_output)
     
             pass
 
         if self.whether_evaluate_quotes:
             self.evaluate_quotes(fandom_fname, pipeline_output)
+
+    def evaluate_coref(self, fandom_fname, pipeline_output):
+        """ Evaluate coref for a fic. 
+            Args:
+                save: save AnnotatedSpan objects in a pickled file in a tmp directory
+        """
+        
+        # Load gold mentions
+        gold = CorefAnnotation(self.coref_annotations_dirpath, fandom_fname, fic_csv_dirpath=self.fic_csv_dirpath)
+
+        # Load predicted mentions
+        pipeline_output.extract_character_mentions(save_dirpath=self.predicted_coref_outpath)
+
+        # Print scores
+        utils.print_quote_scores(pipeline_output.character_mentions, gold.character_mentions, exact_match=True)
 
     def evaluate_quotes(self, fandom_fname, pipeline_output):
         """ Evaluate quotes for a fic. 
@@ -238,7 +255,7 @@ def main():
         evaluate_quotes=config.getboolean('Settings', 'evaluate_quotes'), 
         coref_annotations_dirpath = config.get('Filepaths', 'coref_annotations_dirpath'),
         quote_annotations_dirpath = config.get('Filepaths', 'quote_annotations_dirpath'),
-        predicted_entities_outpath = config.get('Filepaths', 'predicted_entities_outpath'),
+        predicted_coref_outpath = config.get('Filepaths', 'predicted_coref_outpath'),
         predicted_quotes_outpath = config.get('Filepaths', 'predicted_quotes_outpath'),
         )
 
