@@ -17,9 +17,16 @@ class FicRepresentation():
         self.fic_csv = pd.read_csv(self.fic_csvpath)
 
     def save_quotes(self, save_dirpath):
+        """ DEPRECATED to pickle_output """
         """ Save pickle of the quotes in the dirpath """
         if not os.path.exists(save_dirpath):
             os.makedirs(save_dirpath)
         save_fpath = os.path.join(save_dirpath, f'{self.fandom_fname}.pkl')
         with open(save_fpath, 'wb') as f: 
             pickle.dump(self.quotes, f)
+
+    def pickle_output(self, save_dirpath, struct):
+        """ Pickle a structure to a file in the save_dirpath """
+        outpath = os.path.join(save_dirpath, f'{self.fandom_fname}.pkl')
+        with open(os.path.join(outpath), 'wb') as f:
+                pickle.dump(struct, f)

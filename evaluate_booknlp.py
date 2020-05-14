@@ -29,7 +29,7 @@ class BookNLPEvaluator(Evaluator):
                     evaluate_coref=False, evaluate_quotes=False,
                     coref_annotations_dirpath=None,
                     quote_annotations_dirpath=None,
-                    predicted_entities_outpath=None,
+                    predicted_coref_outpath=None,
                     predicted_quotes_outpath=None,
                     token_file_ext='.tokens'):
 
@@ -37,7 +37,7 @@ class BookNLPEvaluator(Evaluator):
                     evaluate_coref, evaluate_quotes,
                     coref_annotations_dirpath,
                     quote_annotations_dirpath,
-                    predicted_entities_outpath,
+                    predicted_coref_outpath,
                     predicted_quotes_outpath)
 
         self.token_output_dirpath = token_output_dirpath
@@ -66,23 +66,10 @@ class BookNLPEvaluator(Evaluator):
         booknlp_output.align_with_annotations()
 
         if self.whether_evaluate_coref:
-            # TODO: fill in with coref
-            pass
+            self.evaluate_coref(fandom_fname, booknlp_output)
 
         if self.whether_evaluate_quotes:
-            self.evaluate_quotes(fandom_fname, booknlp_output)
-
-    def evaluate_quotes(self, fandom_fname, booknlp_output):
-        
-        # Quote extraction evaluation
-        # Load gold quote spans
-        gold = QuoteAnnotation(self.quote_annotations_dirpath, fandom_fname, fic_csv_dirpath=self.fic_csv_dirpath)
-
-        # Load predicted quote spans (from BookNLP output to Quote objects)
-        booknlp_output.extract_quotes(save_dirpath=self.predicted_quotes_outpath)
-
-        # Print scores
-        utils.print_quote_scores(booknlp_output.quotes, gold.quotes, exact_match=False)
+            self.evaluate_quotes(fandom_fname, booknlp_output, exact_match=False)
 
 
 def main():
@@ -103,7 +90,7 @@ def main():
         evaluate_quotes=config.getboolean('Settings', 'evaluate_quotes'), 
         coref_annotations_dirpath = str(config.get('Filepaths', 'coref_annotations_dirpath')),
         quote_annotations_dirpath = str(config.get('Filepaths', 'quote_annotations_dirpath')),
-        predicted_entities_outpath = str(config.get('Filepaths', 'predicted_entities_outpath')),
+        predicted_coref_outpath = str(config.get('Filepaths', 'predicted_coref_outpath')),
         predicted_quotes_outpath = str(config.get('Filepaths', 'predicted_quotes_outpath')),
         token_file_ext = config.get('Settings', 'token_file_ext')
         )

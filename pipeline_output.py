@@ -9,7 +9,15 @@ import pdb
 from fic_representation import FicRepresentation
 import evaluation_utils as utils
 from quote import Quote
+from annotated_span import AnnotatedSpan
 from character_mention_parser import CharacterMentionParser
+
+
+def extract_mention_tags(text):
+    """ Returns AnnotatedSpan objects with start and end token IDs annotated with character """
+    parser = CharacterMentionParser()
+    parser.feed(text)
+    return parser.character_mentions
 
 
 class PipelineOutput(FicRepresentation):
@@ -30,11 +38,16 @@ class PipelineOutput(FicRepresentation):
 
         return predicted_quotes
 
+    def load_coref_csv(self):
+        """ Returns a pandas DataFrame of CSV with coref <tags> """
+
+        return pd.read_csv(os.path.join(self.coref_output_dirpath, f'{self.fandom_fname}.coref.csv'))
+
     def extract_quotes(self, save_dirpath=None):
-        """ Extracts quotes into Quote objects, saves in self.quotes, also in tmp directory if specified.
+        """ Extracts quotes into AnnotatedSpan objects, saves in self.quotes, also in tmp directory if specified.
         """
 
-        self.quotes = [] # list of Quote objects
+        self.quotes = [] # list of AnnotatedSpan objects
         
         predicted_quotes_json = self.load_quote_json()
 
@@ -47,12 +60,26 @@ class PipelineOutput(FicRepresentation):
 
             for quote in quotes:
                 if len(quote['quote']) > 1:
-                    self.quotes.append(Quote(chap_id, para_id, quote['start_paragraph_token_id'], quote['end_paragraph_token_id'], character, text=quote['quote']))
+                    self.quotes.append(AnnotatedSpan(chap_id=chap_id, para_id=para_id, start_token_id=quote['start_paragraph_token_id'], end_token_id=quote['end_paragraph_token_id'], annotation=character, text=quote['quote']))
 
-        if save_dirpath is not None:
-            self.save_quotes(save_dirpath)
+        if save_dirpath:
+            self.pickle_output(save_dirpath, self.quotes)
 
     def extract_character_mentions(self, save_dirpath=None):
+        """ Extracts character mentions, saves in self.character_mentions, also in save_dirpath if specified """
+        
+        self.character_mentions = []
+        coref_fic = self.load_coref_csv()
+
+        for row in list(coref_fic.itertuples()):
+            mentions = extract_mention_tags(row.text_tokenized)
+            for mention in mentions:
+                mention.chap_id = row.chapter_id
+                mention.para_id = row.para_id
+                self.character_mentions.append(mention)
+
+        if save_dirpath:
+            self.pickle_output(save_dirpath, self.character_mentions)
 
 def extract_pipeline_entity_mentions(text):
     """ DEPRECATED """

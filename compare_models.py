@@ -6,12 +6,14 @@ from configparser import ConfigParser
 import argparse
 import pdb
 from statsmodels.stats.contingency_tables import mcnemar
+from scipy.stats import ttest_rel, ttest_ind
 
-from annotation import QuoteAnnotation
+from annotation import Annotation
 from pipeline_output import PipelineOutput
 from booknlp_output import BookNLPOutput
 from quote import Quote
 import evaluation_utils as utils
+from annotated_span import characters_match
 
 
 class ModelComparer():
@@ -20,7 +22,10 @@ class ModelComparer():
                 baseline_coref_dirpath='', baseline_quotes_dirpath='',
                 experimental_coref_dirpath='', experimental_quotes_dirpath='',
                 coref=False, quotes=False,
-                coref_annotations_dirpath='', quote_annotations_dirpath=''):
+                coref_annotations_dirpath='', quote_annotations_dirpath='',
+                coref_annotations_ext='_entity_clusters.csv',
+                quote_annotations_ext='_quote_attribution.csv'
+                ):
         """ Args:
                 dataset_name: name of the dataset.
                 baseline_name: name of the baseline model
@@ -46,6 +51,8 @@ class ModelComparer():
         self.experimental_quotes_dirpath = experimental_quotes_dirpath
         self.coref_annotations_dirpath = coref_annotations_dirpath
         self.quote_annotations_dirpath = quote_annotations_dirpath
+        self.coref_annotations_ext = coref_annotations_ext
+        self.quote_annotations_ext = quote_annotations_ext
         self.ordered_predictions = {} # in the order to run significance tests
         if self.evaluate_coref:
             self.ordered_predictions.update({'coref': {'baseline': [], 'experimental': [], 'gold': []}})
@@ -62,30 +69,49 @@ class ModelComparer():
             self.compare_fic(fandom_fname)
 
         # Run significance test
+        if self.evaluate_coref:
+            self.ttest('coref')
+
         if self.evaluate_quotes:
-            self.mcnemar_quotes()
+            self.ttest('quotes')
 
     def compare_fic(self, fandom_fname):
         """ Extract gold, baseline and experimental predictions, save to self.predictions """
 
         if self.evaluate_coref:
             # Load coref predictions
-            gold_mentions, baseline_mentions, experimental_mentions = self.load_fic_coref(fandom_fname)
+            gold_spans, baseline_spans, experimental_spans = self.load_fic_spans(fandom_fname, self.coref_annotations_dirpath, self.baseline_coref_dirpath, self.experimental_coref_dirpath, self.coref_annotations_ext)
 
-            # Take union of all marked coref spans, annotated with 'null' if don't attribute a character
-            all_quote_spans = Quote.get_union_quotes(gold_quotes, baseline_quotes, experimental_quotes) # This is the order of the output table
-            self.build_ordered_quote_predictions(all_quote_spans, gold_quotes, baseline_quotes, experimental_quotes)
+            # Build list of annotated spans, 'null' if don't extract the span
+            self.build_ordered_predictions(gold_spans, baseline_spans, experimental_spans, span_type='coref')
 
         if self.evaluate_quotes:
             # Load quote attributions
-            gold_quotes, baseline_quotes, experimental_quotes = self.load_fic_quotes(fandom_fname)
+            gold_quotes, baseline_quotes, experimental_quotes = self.load_fic_spans(fandom_fname, self.quote_annotations_dirpath, self.baseline_quotes_dirpath, self.experimental_quotes_dirpath, self.quote_annotations_ext)
 
-            # Take union of all marked quote spans, annotated with 'null' if don't attribute a character
-            all_quote_spans = Quote.get_union_quotes(gold_quotes, baseline_quotes, experimental_quotes) # This is the order of the output table
-            self.build_ordered_quote_predictions(all_quote_spans, gold_quotes, baseline_quotes, experimental_quotes)
+            # Build list of annotated spans, 'null' if don't extract the span
+            self.build_ordered_predictions(gold_quotes, baseline_quotes, experimental_quotes, span_type='quotes')
+
+    def build_ordered_predictions(self, gold_spans, baseline_spans, experimental_spans, span_type='coref'):
+        """ Build ordered predictions for quotes or coref, append to self.ordered_quote_predictions """
+        for span in gold_spans:
+            self.ordered_predictions[span_type]['gold'].append(span)
+
+            matching_baseline = [baseline_span for baseline_span in baseline_spans if span.span_matches(baseline_span, exact=False)]
+            if len(matching_baseline) == 0:
+                self.ordered_predictions[span_type]['baseline'].append(span.null_span())
+            else:
+                self.ordered_predictions[span_type]['baseline'].append(matching_baseline[0])
+
+            matching_experimental = [experimental_span for experimental_span in experimental_spans if span.span_matches(experimental_span, exact=False)]
+            if len(matching_experimental) == 0:
+                self.ordered_predictions[span_type]['experimental'].append(span.null_span())
+            else:
+                self.ordered_predictions[span_type]['experimental'].append(matching_experimental[0])
 
     def build_ordered_quote_predictions(self, all_quote_spans, gold_quotes, baseline_quotes, experimental_quotes):
-        """ Build ordered quote predictions, append to self.ordered_quote_predictions """
+        """ Probably DEPRECATE for build_ordered_predictions
+            Build ordered quote predictions, append to self.ordered_quote_predictions """
         for quote in all_quote_spans:
             matching_gold = [gold_quote for gold_quote in gold_quotes if quote.extraction_matches(gold_quote, exact=False)]
             if len(matching_gold) == 0:
@@ -105,7 +131,18 @@ class ModelComparer():
             else:
                 self.ordered_predictions['quotes']['experimental'].append(matching_experimental[0])
 
+    def load_fic_spans(self, fandom_fname, gold_dirpath, baseline_dirpath, experimental_dirpath, gold_annotations_ext):
+        """ Load quote or coref predictions and gold spans for a fic.
+            Returns gold_spans, baseline_spans, experimental_spans
+        """
+        gold_spans = Annotation(gold_dirpath, fandom_fname, file_ext=gold_annotations_ext, fic_csv_dirpath=self.fic_csv_dirpath).annotations
+        baseline_spans = utils.load_pickle(baseline_dirpath, fandom_fname)
+        experimental_spans = utils.load_pickle(experimental_dirpath, fandom_fname)
+
+        return gold_spans, baseline_spans, experimental_spans
+
     def load_fic_quotes(self, fandom_fname):
+        """ DEPRECATED for load_fic_spans """
         """ Load quote predictions and gold quotes for a fic.
             Returns gold_quotes, baseline_quotes, experimental_quotes
         """
@@ -116,6 +153,7 @@ class ModelComparer():
         return gold_quotes, baseline_quotes, experimental_quotes
 
     def load_fic_coref(self, fandom_fname):
+        """ DEPRECATED for load_fic_spans """
         """ Load coref predictions and gold mentions for a fic.
             Returns gold_mentions, baseline_mentions, experimental_mentions
         """
@@ -147,6 +185,21 @@ class ModelComparer():
             output = BookNLPOutput(*model_args, fandom_fname, **model_kwargs)
 
         return output.quotes
+
+    def ttest(self, span_type):
+        """ Prints related t-test between error distributions of 2 classifiers.
+            Args:
+                span_type: What key in self.ordered_predictions to use.
+                            Will compare baseline and experimental predictions
+        """
+        baseline_correct = [int(characters_match(pred_span.annotation, gold_span.annotation)) for pred_span, gold_span in zip(self.ordered_predictions[span_type]['baseline'], self.ordered_predictions[span_type]['gold'])]
+        experimental_correct = [int(characters_match(pred_span.annotation, gold_span.annotation)) for pred_span, gold_span in zip(self.ordered_predictions[span_type]['experimental'], self.ordered_predictions[span_type]['gold'])]
+        print(f'\tBaseline correct: {sum(baseline_correct)} / {len(baseline_correct)}')
+        print(f'\tExperimental correct: {sum(experimental_correct)} / {len(experimental_correct)}')
+
+        result = ttest_rel(baseline_correct, experimental_correct)
+        #result = ttest_ind(baseline_correct, experimental_correct)
+        print('t-test statistic=%.3f, p-value=%.10f' % (result.statistic, result.pvalue))
 
     def mcnemar_quotes(self):
         """ Run McNemar test on quotes. """
@@ -209,9 +262,9 @@ def main():
     coref_annotations_dirpath = baseline_config.get('Filepaths', 'coref_annotations_dirpath')
     quote_annotations_dirpath = baseline_config.get('Filepaths', 'quote_annotations_dirpath')
 
-    baseline_coref_dirpath = baseline_config.get('Filepaths', 'predicted_entities_outpath')
+    baseline_coref_dirpath = baseline_config.get('Filepaths', 'predicted_coref_outpath')
     baseline_quotes_dirpath = baseline_config.get('Filepaths', 'predicted_quotes_outpath')
-    experimental_coref_dirpath = experimental_config.get('Filepaths', 'predicted_entities_outpath')
+    experimental_coref_dirpath = experimental_config.get('Filepaths', 'predicted_coref_outpath')
     experimental_quotes_dirpath = experimental_config.get('Filepaths', 'predicted_quotes_outpath')
 
     comparer = ModelComparer(args.dataset_name, args.baseline_model, args.experimental_model, fic_csv_dirpath, 

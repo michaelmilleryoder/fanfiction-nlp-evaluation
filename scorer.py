@@ -1,0 +1,182 @@
+""" Holds scoring functions for coref and quotes """
+
+import pdb
+import numpy as np
+import itertools
+
+from annotated_span import AnnotatedSpan, group_annotations, match_spans, match_annotated_spans
+
+
+def span_attribution_confusion_matrix(baseline_spans, experimental_spans, gold_spans):
+        a = 0 # Both correct
+        b = 0 # Baseline correct, experiment incorrect
+        c = 0 # Baseline incorrect, experiment correct
+        d = 0 # Both incorrect
+        for baseline_quote, experimental_quote, gold_quote in zip(self.ordered_predictions['quotes']['baseline'], self.ordered_predictions['quotes']['experimental'], self.ordered_predictions['quotes']['gold']):
+            if utils.characters_match(baseline_quote.speaker, gold_quote.speaker) and utils.characters_match(experimental_quote.speaker, gold_quote.speaker):
+                a += 1
+            elif utils.characters_match(baseline_quote.speaker, gold_quote.speaker) and not utils.characters_match(experimental_quote.speaker, gold_quote.speaker):
+                b += 1
+            elif not utils.characters_match(baseline_quote.speaker, gold_quote.speaker) and utils.characters_match(experimental_quote.speaker, gold_quote.speaker):
+                c += 1
+            else:
+                d += 1
+                
+        table = [[a, b],
+                 [c, d]]
+
+
+def links(mention_cluster):
+    """ Returns a set of all the links in an entity between lists of AnnotatedSpans 
+        Links are tuples (chap_id, start_token_id, end_token_id)
+    """
+    
+    if len(mention_cluster) == 1: # self-link
+        links = {mention_cluster[0].get_location(), mention_cluster[0].get_location()}
+
+    else:
+        links = set([(mention1.get_location(), mention2.get_location()) for mention1, mention2 in itertools.combinations(mention_cluster, 2)])
+        
+    return links
+
+
+def lea_recall(predicted_clusters, gold_clusters):
+    """ Calculates LEA recall between predicted mention clusters and gold mention clusters.
+        Input clusters are of form {'annotation': [AnnotatedSpan, ...]}
+    """
+    
+    cluster_resolutions = {}
+    cluster_sizes = {}
+    
+    for gold_cluster_name, gold_mentions in gold_clusters.items():
+        gold_links = links(gold_mentions)
+        
+        cluster_resolution = 0
+        
+        for predicted_cluster, predicted_mentions in predicted_clusters.items():
+            predicted_links = links(predicted_mentions)
+            
+            cluster_resolution += len(predicted_links.intersection(gold_links))
+            
+        cluster_resolution = cluster_resolution/len(gold_links)
+        cluster_resolutions[gold_cluster_name] = cluster_resolution
+        cluster_sizes[gold_cluster_name] = len(gold_mentions)
+        
+    # take importance (size) of clusters into account
+    if sum(cluster_sizes.values()) == 0: # no predicted clusters
+        fic_recall = 0
+    else:
+        fic_recall = sum([cluster_sizes[c] * cluster_resolutions[c] for c in gold_clusters])/sum(cluster_sizes.values())
+
+    return fic_recall
+
+
+def lea_precision(predicted_clusters, gold_clusters):
+    
+    cluster_resolutions = {}
+    cluster_sizes = {}
+    
+    for predicted_cluster_name, predicted_mentions in predicted_clusters.items():
+        predicted_links = links(predicted_mentions)
+        
+        cluster_resolution = 0
+        
+        for gold_cluster, gold_mentions in gold_clusters.items():
+            gold_links = links(gold_mentions)
+            cluster_resolution += len(predicted_links.intersection(gold_links))
+        
+        cluster_resolution = cluster_resolution/len(predicted_links)
+        cluster_resolutions[predicted_cluster_name] = cluster_resolution
+        cluster_sizes[predicted_cluster_name] = len(predicted_mentions)
+        
+    # take importance (size) of clusters into account
+    if sum(cluster_sizes.values()) == 0: # no predicted clusters
+        fic_precision = 0
+    else:
+        fic_precision = sum([cluster_sizes[c] * cluster_resolutions[c] for c in predicted_clusters])/sum(cluster_sizes.values())
+        
+    return fic_precision
+
+
+def f_score(precision, recall):
+    if precision + recall == 0:
+        return 0
+    return 2 * (precision * recall)/(precision + recall)
+
+
+def calculate_lea(predicted_mentions, gold_mentions):
+    """ Calculate LEA coreference evaluation from gold and predicted AnnotatedSpans """
+
+    predicted_clusters = group_annotations(predicted_mentions)
+    gold_clusters = group_annotations(gold_mentions)
+
+    recall = lea_recall(predicted_clusters, gold_clusters)
+    precision = lea_precision(predicted_clusters, gold_clusters)
+    f1 = f_score(precision, recall)
+
+    return f1, precision, recall
+
+
+def print_coref_scores(predicted_mentions, gold_mentions, exact_match=True):
+    """ Prints coref scores """
+
+    f1, precision, recall = calculate_lea(predicted_mentions, gold_mentions)
+
+    print('\tCoref results:')
+    print(f'\t\tLEA F-score: {f1: .2%}')
+    print(f'\t\tLEA Precision: {precision: .2%}')
+    print(f'\t\tLEA Recall: {recall: .2%}')
+    print()
+
+
+def print_quote_scores(predicted_quotes, gold_quotes, exact_match=True):
+    """ Prints quote extraction and attribution scores """
+
+    # Precision, recall of the quote extraction (the markables)
+    matched_gold_quotes, matched_pred_quotes, false_positives, false_negatives = match_spans(predicted_quotes, gold_quotes, exact=exact_match)
+    if len(predicted_quotes) == 0:
+        if len(gold_quotes) == 0:
+            precision = 1
+        else:
+            precision = 0
+    else:
+        precision = len(matched_pred_quotes)/len(predicted_quotes)
+    if len(gold_quotes) == 0:
+        recall = 1 # everyone gets perfect recall if there are no quotes
+    else:
+        recall = len(matched_gold_quotes)/len(gold_quotes)
+    f1 = f_score(precision, recall)
+    print(f'\tExtraction results:')
+    print(f'\t\tF-score: {f1: .2%}')
+    print(f'\t\tPrecision: {precision: .2%} ({len(matched_pred_quotes)}/{len(predicted_quotes)})')
+    print(f'\t\tRecall: {recall: .2%} ({len(matched_gold_quotes)}/{len(gold_quotes)})')
+
+    # Quote attribution accuracy on matched quotes
+    correct_attributions, incorrect_attributions = match_annotated_spans(matched_pred_quotes, matched_gold_quotes, matched=True, incorrect_extractions=false_positives)
+    if len(matched_pred_quotes) == 0:
+        attribution_accuracy_matched = 0
+    else:
+        attribution_accuracy_matched = len(correct_attributions)/len(matched_pred_quotes)
+    print(f'\tAttribution results:')
+
+    # Quote attribution accuracy on all predicted quotes.
+    # If the predicted quote is not a real quote span, is not a match
+    if len(predicted_quotes) == 0:
+        if len(gold_quotes) == 0:
+            attribution_precision = 1
+        else:
+            attribution_precision = 0
+    else:
+        attribution_precision = len(correct_attributions)/len(predicted_quotes)
+    if len(gold_quotes) == 0:
+        attribution_recall = 1 # everyone gets perfect recall if no quotes
+    else:
+        attribution_recall = len(correct_attributions)/len(gold_quotes)
+    attribution_f1 = f_score(attribution_precision, attribution_recall)
+    print(f'\t\tF-score: {attribution_f1: .2%}')
+    print(f'\t\tPrecision: {attribution_precision: .2%} ({len(correct_attributions)}/{len(predicted_quotes)})')
+    print(f'\t\tRecall: {attribution_recall: .2%} ({len(correct_attributions)}/{len(gold_quotes)})')
+
+    print(f'\t\tAccuracy on matched quote spans: {attribution_accuracy_matched: .2%} ({len(correct_attributions)}/{len(matched_pred_quotes)})')
+
+    print()

@@ -4,7 +4,7 @@ import re
 import pdb
 from string import punctuation
 
-from span import Span
+from annotated_span import AnnotatedSpan
 
 
 class Quote(AnnotatedSpan):
@@ -17,7 +17,7 @@ class Quote(AnnotatedSpan):
             speaker=None,
             text=None):
 
-        super().__init__(chap_id=chap_id, para_id=para_id, start_token_id=start_token_id, end_token_id=end_token_id, annotation=speaker, text=text)
+        super().__init__(self, chap_id=chap_id, para_id=para_id, start_token_id=start_token_id, end_token_id=end_token_id, annotation=speaker, text=text)
 
         self.speaker = speaker
 
@@ -37,6 +37,7 @@ class Quote(AnnotatedSpan):
         return f"{self.chap_id}.{self.para_id}.{self.start_token_id}-{self.end_token_id},speaker={self.speaker}"
 
     def null_character_quote(self):
+        """ DEPRECATED for AnnotatedSpan.null_annotation() """
         return Quote(
             chap_id=self.chap_id,
             para_id=self.para_id, 
@@ -45,11 +46,12 @@ class Quote(AnnotatedSpan):
             speaker='NULL')
 
     def extraction_matches(self, other_quote, exact=True):
+        """ DEPRECATED for AnnotatedSpan.span_matches() """
         """ Check if the extracted quote matches another quote.
             Ignores speaker attribution.
             Args:
                 exact: whether an exact match on token IDs is necessary.
-                    Otherwise matches if has is in the same paragraph, 
+                    Otherwise matches if is in the same paragraph, 
                     has very similar text and beginning and start points 
                     occur within a small window of the other quote.
         """
@@ -65,6 +67,7 @@ class Quote(AnnotatedSpan):
                 self.quote_endpoints_align(other_quote, exact=exact)
 
     def quote_endpoints_align(self, other_quote, exact=True):
+        """ DEPRECATED for AnnotatedSpan.span_endpoints_align() """
         """ Returns whether quote endpoints are within a small window
             of each other (or exact if specified).
         """
@@ -77,6 +80,7 @@ class Quote(AnnotatedSpan):
             return abs(self.start_token_id - other_quote.start_token_id) <= window_size and abs(self.end_token_id - other_quote.end_token_id) <= window_size
     
     def quote_text_matches(self, other_quote):
+        """ DEPRECATED for AnnotatedSpan.span_text_matches() """
         
         processed_quotes = []
         word_match_threshold = .5
@@ -99,6 +103,7 @@ class Quote(AnnotatedSpan):
         return (n_matches/len(other_quote.text_tokens)) >= word_match_threshold
 
     def preprocess_quote_text(self):
+        """ DEPRECATED for AnnotatedSpan.preprocess_text() """
         """ Creates a set of lowercased unique tokens from a quote's text.
             Saves to self.text_tokens
         """

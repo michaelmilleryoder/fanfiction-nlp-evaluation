@@ -5,9 +5,11 @@ import pickle
 import pdb
 import csv
 import pandas as pd
+import numpy as np
 from collections import Counter
 
 from fic_representation import FicRepresentation
+from annotated_span import AnnotatedSpan
 from quote import Quote
 import evaluation_utils as utils
 
@@ -214,6 +216,7 @@ class BookNLPOutput(FicRepresentation):
         self.token_data['modified_tokenId'] = new_tokenIds
 
     def extract_entity_mentions(self, save_path=None):
+        """ DEPRECATED for extract_character_mentions """
         """ Extract character mentions from BookNLP output """
         selected_cols = ['chapterId', 'modified_paragraphId', 'modified_tokenId', 'characterId', 'originalWord']
         mentions = self.token_data[self.token_data['characterId']>-1].loc[:, selected_cols]
@@ -332,8 +335,80 @@ class BookNLPOutput(FicRepresentation):
 
         return quote_character_map
 
+    def build_character_id_name_map(self):
+        """ Builds a dict {character_id: character_name}.
+            Save to self.character_id2name 
+        """
+
+        self.character_id2name = {}
+
+        if not hasattr(self, 'json_data'):
+            self.load_json_output()
+
+        for char in self.json_data['characters']:
+            char_id = char['id']
+            char_name = char['names'][0]['n'] # take first name as name
+            self.character_id2name[char_id] = char_name
+
+    def extract_character_mentions(self, save_dirpath=None):
+        """ Extracts character mentions, saves in self.character_mentions, also in save_dirpath if specified """
+
+        self.character_mentions = []
+        self.build_character_id_name_map()
+
+        selected_cols = ['chapterId', 'modified_paragraphId', 'modified_tokenId', 'characterId', 'originalWord']
+        char_values = self.token_data['characterId'].unique()
+        if len(char_values) == 1 and char_values[0] == -1: # no character mentions
+            if save_dirpath:
+                self.pickle_output(save_dirpath, self.character_mentions)
+            return
+            
+        mentions = self.token_data[self.token_data['characterId']>-1].loc[:, selected_cols]
+
+        # Calculate end tokens for any entity mentions
+        mentions['next_entity_tokenId'] = mentions['modified_tokenId'].tolist()[1:] + [0]
+        mentions['next_entity_paragraphId'] = mentions['modified_paragraphId'].tolist()[1:] + [0]
+        mentions['next_entity_characterId'] = mentions['characterId'].tolist()[1:] + [0]
+        mentions['sequential'] = [(next_entity_tokenId == modified_tokenId + 1) and                               (next_entity_paragraphId == modified_paragraphId) and                               (next_entity_characterId == characterId) 
+                                for next_entity_tokenId, modified_tokenId, next_entity_paragraphId, modified_paragraphId, next_entity_characterId, characterId in \
+                                  zip(mentions['next_entity_tokenId'], mentions['modified_tokenId'], mentions['next_entity_paragraphId'], \
+                                      mentions['modified_paragraphId'], mentions['next_entity_characterId'], mentions['characterId'])
+                                     ]
+
+        prev_was_sequential = False
+        prev_token_id_start = 0
+        mention_tokens = []
+
+        for row in list(mentions.itertuples()):
+            chapter_id = row.chapterId
+            para_id = row.modified_paragraphId
+            character_id = row.characterId
+            token_id_start = row.modified_tokenId
+            mention_tokens.append(str(row.originalWord))
+
+            if row.sequential: # Store last token ID
+                if not prev_was_sequential: # not in the middle of an entity mention
+                    prev_was_sequential = True
+                    prev_token_id_start = token_id_start
+
+            else:
+                # Save character mention
+                if prev_was_sequential:
+                    token_id_start = prev_token_id_start
+
+                token_id_end = row.modified_tokenId
+                if np.isnan(character_id):
+                    pdb.set_trace()
+                character_name = self.character_id2name[character_id]
+                self.character_mentions.append(AnnotatedSpan(chap_id=chapter_id, para_id=para_id, start_token_id=token_id_start, end_token_id=token_id_end, annotation=character_name, text=' '.join(mention_tokens)))
+                prev_was_sequential = row.sequential
+                mention_tokens = []
+
+        if save_dirpath:
+            self.pickle_output(save_dirpath, self.character_mentions)
+
     def extract_quotes(self, save_dirpath=None):
-        """ Extract Quote objects from BookNLP output representations. 
+        """ Extract AnnotatedSpan objects from BookNLP output representations. 
             Saves to self.quotes
         """
 
@@ -342,7 +417,7 @@ class BookNLPOutput(FicRepresentation):
         # Load BookNLP JSON
         self.load_json_output()
 
-        # Get Quote objects from all characters from BookNLP JSON
+        # Get AnnotatedSpan objects from all characters from BookNLP JSON
         for char in self.json_data['characters']:
             char_name = char['names'][0]['n'] # take first name as name
             for utterance in char['speaking']:
@@ -350,9 +425,9 @@ class BookNLPOutput(FicRepresentation):
                 quote_length = len(text.split())
                 matching_token_data = self.token_data.loc[self.token_data['tokenId'].isin(range(utterance['i'], utterance['i'] + quote_length))]
 
-                # TODO: check if the tokens in the matching token data match the quote. If not try to search for the text (verify with sherlock dev)
+                # TODO: check if the tokens in the matching token data match the quote. If not try to search for the text
                 matching_tokens = matching_token_data['originalWord'].tolist()
-                if not Quote(text=' '.join(matching_tokens)).quote_text_matches(Quote(text=text)):
+                if not AnnotatedSpan(text=' '.join(matching_tokens)).span_matches(AnnotatedSpan(text=text)):
                     found_quote_indices = utils.sublist_indices(text.split()[1:-1], self.token_data['normalizedWord'].tolist())
                     if len(found_quote_indices) == 1:
                         matching_token_data = self.token_data.iloc[found_quote_indices[0][0]-1:found_quote_indices[0][1]+1]
@@ -372,7 +447,7 @@ class BookNLPOutput(FicRepresentation):
                 token_end = modified_token_range[-1]
                 assert token_start < token_end
 
-                self.quotes.append(Quote(chap_id, para_id, token_start, token_end, char_name, text))
+                self.quotes.append(AnnotatedSpan(chap_id=chap_id, para_id=para_id, start_token_id=token_start, end_token_id=token_end, annotation=char_name, text=text))
 
         if save_dirpath is not None:
-            self.save_quotes(save_dirpath)
+            self.pickle_output(save_dirpath, self.quotes)
