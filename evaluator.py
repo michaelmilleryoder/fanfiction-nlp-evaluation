@@ -1,4 +1,3 @@
-from quote import Quote
 import scorer
 from annotation import Annotation
 

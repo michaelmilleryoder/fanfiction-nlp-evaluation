@@ -15,7 +15,6 @@ from configparser import ConfigParser
 import argparse
 
 from evaluator import Evaluator
-from annotation import QuoteAnnotation
 from booknlp_output import BookNLPOutput
 import evaluation_utils as utils
 

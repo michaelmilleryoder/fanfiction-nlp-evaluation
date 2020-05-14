@@ -10,7 +10,6 @@ from collections import Counter
 
 from fic_representation import FicRepresentation
 from annotated_span import AnnotatedSpan
-from quote import Quote
 import evaluation_utils as utils
 
 
@@ -215,69 +214,10 @@ class BookNLPOutput(FicRepresentation):
         new_tokenIds = sum([list(range(1, para_length+1)) for para_length in para_token_lengths], [])
         self.token_data['modified_tokenId'] = new_tokenIds
 
-    def extract_entity_mentions(self, save_path=None):
-        """ DEPRECATED for extract_character_mentions """
-        """ Extract character mentions from BookNLP output """
-        selected_cols = ['chapterId', 'modified_paragraphId', 'modified_tokenId', 'characterId', 'originalWord']
-        mentions = self.token_data[self.token_data['characterId']>-1].loc[:, selected_cols]
-
-        # Calculate end tokens for any entity mentions
-        mentions['next_entity_tokenId'] = mentions['modified_tokenId'].tolist()[1:] + [0]
-        mentions['next_entity_paragraphId'] = mentions['modified_paragraphId'].tolist()[1:] + [0]
-        mentions['next_entity_characterId'] = mentions['characterId'].tolist()[1:] + [0]
-        mentions['sequential'] = [(next_entity_tokenId == modified_tokenId + 1) and                               (next_entity_paragraphId == modified_paragraphId) and                               (next_entity_characterId == characterId) 
-                                for next_entity_tokenId, modified_tokenId, next_entity_paragraphId, modified_paragraphId, next_entity_characterId, characterId in \
-                                  zip(mentions['next_entity_tokenId'], mentions['modified_tokenId'], mentions['next_entity_paragraphId'], \
-                                      mentions['modified_paragraphId'], mentions['next_entity_characterId'], mentions['characterId'])
-                                     ]
-
-        predicted_entities = {}
-
-        prev_was_sequential = False
-        prev_token_id_start = 0
-
-        fic_id = int(fname.split('.')[0].split('_')[1])
-
-        for row in list(mentions.itertuples()):
-            chapter_id = row.chapterId
-            para_id = row.modified_paragraphId
-            character_id = row.characterId
-            token_id_start = row.modified_tokenId
-
-            if row.sequential: # Store last token ID
-                if prev_was_sequential: # in the middle of an entity mention
-                    continue
-                else:
-                    prev_was_sequential = True
-                    prev_token_id_start = token_id_start
-                    continue
-
-            # Save entity mention
-            if not fic_id in predicted_entities:
-                predicted_entities[fic_id] = {}
-
-            if not character_id in predicted_entities[fic_id]:
-                predicted_entities[fic_id][character_id] = set()
-
-            if prev_was_sequential:
-                token_id_start = prev_token_id_start
-
-            token_id_end = row.modified_tokenId
-
-            predicted_entities[fic_id][character_id].add((chapter_id, para_id, token_id_start, token_id_end))
-
-            prev_was_sequential = row.sequential
-
-        if save_path:
-            outpath = os.path.join(save_path, f'booknlp_{fic_id}.pkl')
-            with open(os.path.join(outpath), 'wb') as f:
-                pickle.dump(predicted_entities, f)
-
-        return predicted_entities
-
     def extract_bio_quotes(self):
         """ Extracts Quote objects (unattributed) from BookNLP output token data.
             Saves to self.quotes
+            Not used anymore since hardly any quotes are saved in the token files.
         """
 
         selected_columns = ['chapterId', 'modified_paragraphId', 'modified_tokenId', 'originalWord', 'inQuotation']
@@ -301,39 +241,6 @@ class BookNLPOutput(FicRepresentation):
 
             current_quote_tokens.append(row.originalWord)
             prev_token_id = row.modified_tokenId
-
-    def quote_character_map(self):
-        """ Returns a dictionary of quote texts as keys, character names as values,
-            extracted from BookNLP output json.
-        """
-
-        # Load BookNLP JSON
-        self.load_json_output()
-
-        # Attribute Quote objects from character JSON
-        quote_character_map = {} # quote_text: character
-
-        for char in self.json_data['characters']:
-            char_name = char['names'][0]['n'] # take first name as name
-            for utterance in char['speaking']:
-                text = utterance['w']
-                if text in quote_character_map: pdb.set_trace()
-                quote_character_map[text] = char_name
-
-                #chap_id = matching_token_data['chapterId'].values[0]
-                #para_id = Counter(matching_token_data['modified_paragraphId'].tolist()).most_common(1)[0][0]
-
-                # In case wraps to the next paragraph                
-                #matching_token_data = matching_token_data[matching_token_data['modified_paragraphId']==para_id]
-
-                #modified_token_range = matching_token_data['modified_tokenId'].tolist()
-                #token_start = modified_token_range[0]
-                #token_end = modified_token_range[-1]
-                #assert token_start < token_end
-
-                #if self.fandom_fname.startswith('sherlock') and chap_id==1 and para_id==38:
-
-        return quote_character_map
 
     def build_character_id_name_map(self):
         """ Builds a dict {character_id: character_name}.

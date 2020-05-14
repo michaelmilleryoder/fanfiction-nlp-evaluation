@@ -88,6 +88,16 @@ def characters_match(predicted_char, gold_char):
                 
     return match
 
+def get_union_quotes(gold_quotes, baseline_quotes, experimental_quotes):
+    """ Returns the union of all quote spans [old, would need to be changed to use] """
+
+    all_quote_spans = gold_quotes
+    exclusive_baseline = [baseline_quote for baseline_quote in baseline_quotes if not any([baseline_quote.extraction_matches(quote, exact=False) for quote in all_quote_spans])]
+    all_quote_spans += exclusive_baseline
+    exclusive_experimental = [experimental_quote for experimental_quote in experimental_quotes if not any([experimental_quote.extraction_matches(quote, exact=False) for quote in all_quote_spans])]
+    all_quote_spans += exclusive_experimental
+
+    return all_quote_spans
 
 class AnnotatedSpan():
 

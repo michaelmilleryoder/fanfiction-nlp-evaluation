@@ -16,8 +16,6 @@ from collections import defaultdict
 import argparse
 from configparser import ConfigParser
 
-import pipeline_coref as coref
-
 from evaluator import Evaluator
 from annotation import Annotation
 import evaluation_utils as utils

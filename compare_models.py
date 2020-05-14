@@ -11,7 +11,6 @@ from scipy.stats import ttest_rel, ttest_ind
 from annotation import Annotation
 from pipeline_output import PipelineOutput
 from booknlp_output import BookNLPOutput
-from quote import Quote
 import evaluation_utils as utils
 from annotated_span import characters_match
 
@@ -109,28 +108,6 @@ class ModelComparer():
             else:
                 self.ordered_predictions[span_type]['experimental'].append(matching_experimental[0])
 
-    def build_ordered_quote_predictions(self, all_quote_spans, gold_quotes, baseline_quotes, experimental_quotes):
-        """ Probably DEPRECATE for build_ordered_predictions
-            Build ordered quote predictions, append to self.ordered_quote_predictions """
-        for quote in all_quote_spans:
-            matching_gold = [gold_quote for gold_quote in gold_quotes if quote.extraction_matches(gold_quote, exact=False)]
-            if len(matching_gold) == 0:
-                self.ordered_predictions['quotes']['gold'].append(quote.null_character_quote())
-            else:
-                self.ordered_predictions['quotes']['gold'].append(matching_gold[0])
-
-            matching_baseline = [baseline_quote for baseline_quote in baseline_quotes if quote.extraction_matches(baseline_quote, exact=False)]
-            if len(matching_baseline) == 0:
-                self.ordered_predictions['quotes']['baseline'].append(quote.null_character_quote())
-            else:
-                self.ordered_predictions['quotes']['baseline'].append(matching_baseline[0])
-
-            matching_experimental = [experimental_quote for experimental_quote in experimental_quotes if quote.extraction_matches(experimental_quote, exact=False)]
-            if len(matching_experimental) == 0:
-                self.ordered_predictions['quotes']['experimental'].append(quote.null_character_quote())
-            else:
-                self.ordered_predictions['quotes']['experimental'].append(matching_experimental[0])
-
     def load_fic_spans(self, fandom_fname, gold_dirpath, baseline_dirpath, experimental_dirpath, gold_annotations_ext):
         """ Load quote or coref predictions and gold spans for a fic.
             Returns gold_spans, baseline_spans, experimental_spans
@@ -140,51 +117,6 @@ class ModelComparer():
         experimental_spans = utils.load_pickle(experimental_dirpath, fandom_fname)
 
         return gold_spans, baseline_spans, experimental_spans
-
-    def load_fic_quotes(self, fandom_fname):
-        """ DEPRECATED for load_fic_spans """
-        """ Load quote predictions and gold quotes for a fic.
-            Returns gold_quotes, baseline_quotes, experimental_quotes
-        """
-        gold_quotes = QuoteAnnotation(self.quote_annotations_dirpath, fandom_fname, fic_csv_dirpath=self.fic_csv_dirpath).quotes
-        baseline_quotes = utils.load_pickle(self.baseline_quotes_dirpath, fandom_fname)
-        experimental_quotes = utils.load_pickle(self.experimental_quotes_dirpath, fandom_fname)
-
-        return gold_quotes, baseline_quotes, experimental_quotes
-
-    def load_fic_coref(self, fandom_fname):
-        """ DEPRECATED for load_fic_spans """
-        """ Load coref predictions and gold mentions for a fic.
-            Returns gold_mentions, baseline_mentions, experimental_mentions
-        """
-        gold_mentions = CorefAnnotation(self.coref_annotations_dirpath, fandom_fname, fic_csv_dirpath=self.fic_csv_dirpath).character_mentions
-        baseline_mentions = utils.load_pickle(self.baseline_coref_dirpath, fandom_fname)
-        experimental_mentions = utils.load_pickle(self.experimental_coref_dirpath, fandom_fname)
-
-        return gold_mentions, baseline_mentions, experimental_mentions
-
-    def get_quotes(self, model_name, fandom_fname, model_args, model_kwargs):
-        """ DEPRECATED """
-        """ Returns a list of quote objects from the FicRepresentation subclass corresponding to the model.
-            Args:
-                model_name: which model output out of {pipeline, booknlp}
-                fandom_fname: fandom_ficid name of fic
-                *args: positional arguments specific to the model FicRepresentation constructor (excluding fandom_fname)
-
-                **kwargs: arguments specific to the model FicRepresentation constructor
-        """
-
-        if model_name == 'pipeline':
-            output = PipelineOutput(*model_args, fandom_fname)
-            output.extract_quotes()
-
-        elif model_name == 'gold':
-            output = QuoteAnnotation(*model_args, fandom_fname, **model_kwargs)
-
-        elif model_name == 'booknlp':
-            output = BookNLPOutput(*model_args, fandom_fname, **model_kwargs)
-
-        return output.quotes
 
     def ttest(self, span_type):
         """ Prints related t-test between error distributions of 2 classifiers.

@@ -9,8 +9,6 @@ from string import punctuation
 import re
 import pdb
 
-from quote import Quote
-
 
 def load_pickle(dirpath, fandom_fname):
     fpath = os.path.join(dirpath, f'{fandom_fname}.pkl')
