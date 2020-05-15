@@ -2,6 +2,7 @@
 
 import os
 import pandas as pd
+from copy import deepcopy
 
 from fic_representation import FicRepresentation
 import evaluation_utils as utils
@@ -53,3 +54,23 @@ class Annotation(FicRepresentation):
         
         for mention in self.annotations:
             mention.text = ' '.join(para_tokens[(mention.chap_id, mention.para_id)][mention.start_token_id-1:mention.end_token_id])
+
+    def annotation_bio(self):
+        """ Returns a sequence of token-level BIO annotations """
+
+        # Get token lengths
+        self.fic_csv['token_count'] = self.fic_csv['text_tokenized'].map(lambda x: len(x.str.split()))
+        fic = self.fic_csv.set_index(['chapter_id', 'para_id'], inplace=False)
+        fic['original_bio'] = fic['token_count'].map(lambda x: ['O'] * x)
+        annotation_bio = deepcopy(fic['original_bio'].to_dict())
+
+        # Mark with BIO
+        for span in self.annotations:
+            bio = annotation_bio[(chap_id, para_id)]
+            bio[span.start_token_id-1] = 'B' # 1-start instead of 0
+            bio[span.start_token_id:span.end_token_id] = ['I'] * (span.end_token_id-span.start_token_id)
+            annotation_bio[(chap_id, para_id)] = bio
+
+        ordered_bio = [vals for _,vals in sorted(annotation_bio.items())] 
+        bio_labels = [val for vals in ordered_bio for val in vals] # flatten
+        return bio_labels

@@ -3,8 +3,35 @@
 import pdb
 import numpy as np
 import itertools
+from sklearn.metrics import cohen_kappa_score
 
 from annotated_span import AnnotatedSpan, group_annotations, match_spans, match_annotated_spans
+
+
+def score_attribution_labels(matched_labels, mismatched_labels, mismatched_extraction_labels, metric='cohen'):
+    """ Scores annotation labels for lists of tuples:
+            matched_labels: (span1, span2) for spans that match and have the same annotation
+            mismatched_labels: (span1, span2) for spans that match but do not have the same annotation
+            mismatched_extraction_labels: (span1, span2) for spans that match but one has a NULL label (wasn't extracted)
+
+        Returns score_on_matched_extractions, score_on_all_extractions
+    """
+    # Build corresponding lists of attributions
+    matched_labels1, matched_labels2 = list(zip(*matched_attributions))
+    mismatched_labels1, mismatched_labels2 = list(zip(*mismatched_attributions))
+    mismatched_ext_labels1, mismatched_ext_labels2 = list(zip(*mismatched_extractions))
+
+    # Calculate attribution agreement on matched extractions
+    ext_labels1 = matched_labels1 + mismatched_labels1
+    ext_labels2 = matched_labels2 + mismatched_labels2
+    score_on_matched_extractions = cohen_kappa_score(ext_labels1, ext_labels2)
+
+    # Calculate attribution agreement on all extractions
+    labels1 = matched_labels1 + mismatched_labels1 + mismatched_ext_labels1
+    labels2 = matched_labels2 + mismatched_labels2 + mismatched_ext_labels2
+    score_on_all_extractions = cohen_kappa_score(labels1, labels2)
+
+    return score_on_matched_extractions, score_on_all_extractions
 
 
 def span_attribution_confusion_matrix(baseline_spans, experimental_spans, gold_spans):

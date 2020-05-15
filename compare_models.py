@@ -169,9 +169,6 @@ class ModelComparer():
 
 
 def main():
-   #         'pipeline': {'quotes': '/projects/fanfiction-nlp/tmp/predicted_quotes'},
-   #         'booknlp': {'quotes': '/projects/book-nlp/tmp/predicted_quotes'}
-
     parser = argparse.ArgumentParser(description='Run significance tests between model predictions')
     parser.add_argument('dataset_name', nargs='?', help='Name of dataset')
     parser.add_argument('baseline_model', nargs='?', help='Name of baseline model in {pipeline, booknlp}')

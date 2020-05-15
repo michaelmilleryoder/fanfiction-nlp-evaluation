@@ -35,7 +35,10 @@ def match_spans(predicted_spans, gold_spans, exact=True):
 
 
 def match_annotated_spans(predicted_spans, gold_spans, matched=False, incorrect_extractions=[]):
-    """ Match AnnotatedSpan objects entirely, including annotation """
+    """ Match AnnotatedSpan objects entirely, including annotation.
+        If extractions don't match, counts it as a mismatched annotation.
+        Returns matched_attributions, mismatched_attributions
+    """
 
     correct_attributions = []
 
@@ -58,6 +61,42 @@ def match_annotated_spans(predicted_spans, gold_spans, matched=False, incorrect_
 
     return correct_attributions, incorrect_attributions
 
+
+def annotation_labels(attributions1, attributions2, matched=False, mismatched_extractions1=[], mismatched_extractions2=[]):
+    """ Get lists of labels (including null) from 2 lists of AnnotatedSpans
+        Returns matched_attributions, mismatched_attributions, mismatched_extractions where each is a list of tuples (annotated_span1, annotated_span2)
+    """
+    # TODO: merge with match_annotated_spans?
+
+    matched_attributions = []
+    mismatched_attributions = []
+    mismatched_extractions = []
+    score = None
+
+    # Check extractions
+    if not matched:
+        matched1, matched2, spans_1not2, spans_2not1 = self.match_spans(attributions1, attributions2)
+    else:
+        matched1, matched2 = attributions1, attributions2
+        spans_1not2 = mismatched_extractions1
+        spans_2not1 = mismatched_extractions2
+
+    # Find matched gold spans
+    for span1, span2 in zip(matched1, matched2):
+    
+        # Check attribution
+        if characters_match(span1.annotation, span2.annotation):
+            matched_attributions.append((span1, span2))
+        else:
+            mismatched_attributions.append((span1, span2))
+
+    # Total attribution score (including mismatched extractions)
+    for span in spans1_not2:
+        mismatched_extractions.append((span, span.null_span()))
+    for span in spans2_not1:
+        mismatched_extractions.append((span.null_span(), span))
+
+    return matched_attributions, mismatched_attributions, mismatched_extractions
 
 def group_annotations(spans):
     """ Group annotations by annotation
