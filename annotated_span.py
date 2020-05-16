@@ -31,7 +31,7 @@ def match_spans(predicted_spans, gold_spans, exact=True):
     false_positives = [predicted for predicted in predicted_spans if not predicted in matched_predicted]
     false_negatives = [gold for gold in gold_spans if not gold in matched_gold]
 
-    return matched_gold, matched_predicted, false_positives, false_negatives
+    return matched_predicted, matched_gold, false_positives, false_negatives
 
 
 def match_annotated_spans(predicted_spans, gold_spans, matched=False, incorrect_extractions=[]):
@@ -44,7 +44,7 @@ def match_annotated_spans(predicted_spans, gold_spans, matched=False, incorrect_
 
     # Check extractions
     if not matched:
-        matched_gold, matched_predicted, incorrect_extractions, _ = self.match_spans(predicted_spans, gold_spans)
+        matched_predicted, matched_gold, incorrect_extractions, _ = self.match_spans(predicted_spans, gold_spans)
     else:
         matched_gold, matched_predicted = gold_spans, predicted_spans
 
@@ -75,7 +75,7 @@ def annotation_labels(attributions1, attributions2, matched=False, mismatched_ex
 
     # Check extractions
     if not matched:
-        matched1, matched2, spans_1not2, spans_2not1 = self.match_spans(attributions1, attributions2)
+        matched1, matched2, spans_1not2, spans_2not1 = match_spans(attributions1, attributions2)
     else:
         matched1, matched2 = attributions1, attributions2
         spans_1not2 = mismatched_extractions1
@@ -91,12 +91,37 @@ def annotation_labels(attributions1, attributions2, matched=False, mismatched_ex
             mismatched_attributions.append((span1, span2))
 
     # Total attribution score (including mismatched extractions)
-    for span in spans1_not2:
+    for span in spans_1not2:
         mismatched_extractions.append((span, span.null_span()))
-    for span in spans2_not1:
+    for span in spans_2not1:
         mismatched_extractions.append((span.null_span(), span))
 
     return matched_attributions, mismatched_attributions, mismatched_extractions
+
+
+def normalize_annotations(annotations1, annotations2):
+    """ Returns a dictionary of character name to the same ID if the characters match """
+    char2id = {}
+    current_id = 0
+    labels1 = set([span.annotation for span in annotations1])
+    labels2 = set([span.annotation for span in annotations2])
+
+    for label1 in labels1:
+        char2id[label1] = current_id
+        for label2 in labels2:
+            if characters_match(label1, label2):
+                char2id[label2] = current_id
+                break
+        current_id += 1
+
+    # any unmatched characters
+    for label2 in labels2:
+        if not label2 in char2id:
+            char2id[label2] = current_id
+            current_id += 1
+
+    return char2id
+
 
 def group_annotations(spans):
     """ Group annotations by annotation
@@ -112,20 +137,39 @@ def group_annotations(spans):
     return clusters
 
 
-def characters_match(predicted_char, gold_char):
-    """ If any parts of the predicted character matches any part of the gold character (fairly lax) """
+def characters_match(char1, char2):
+    """ Returns if 2 character names match closely enough.
+        First splits character names into parts by underscores or spaces.
+        Matches either if:
+            * Any part matches and either name has only 1 part (Potter and Harry Potter, e.g.)
+            * The number of part matches is higher than half of unique name parts between the 2 characters
+    """
     
-    predicted_char_parts = predicted_char.lower().split('_')
-    gold_char_parts = [re.sub(r'[\(\)]', '', part) for part in gold_char.lower().split(' ')]
+    #predicted_char_parts = predicted_char.lower().split('_')
+    #gold_char_parts = [re.sub(r'[\(\)]', '', part) for part in gold_char.lower().split(' ')]
+    char1_processed = re.sub(r'[\(\),]', '', char1)
+    char1_parts = re.split(r'[ _]', char1_processed.lower())
+    char2_processed = re.sub(r'[\(\),]', '', char2)
+    char2_parts = re.split(r'[ _]', char2_processed.lower())
     
-    match = False
-    
-    for pred_part in predicted_char_parts:
-        for gold_part in gold_char_parts:
-            if pred_part == gold_part:
-                match = True
-                
+    # Count number of part matches
+    n_parts_match = 0
+    for part1 in char1_parts:
+        for part2 in char2_parts:
+            #if part1 == part2 and len(char1_parts)==1 or len(char2_parts)==1:
+            if part1 == part2:
+                n_parts_match += 1
+
+    # Determine match    
+    if n_parts_match == 1 and (len(char1_parts) == 1 or len(char2_parts) == 1):
+        match = True
+    elif n_parts_match > len(set(char1_parts + char2_parts))/2:
+        match = True
+    else:
+        match = False
+
     return match
+
 
 def get_union_quotes(gold_quotes, baseline_quotes, experimental_quotes):
     """ Returns the union of all quote spans [old, would need to be changed to use] """

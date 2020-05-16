@@ -4,15 +4,19 @@ from collections import namedtuple
 from configparser import ConfigParser
 import argparse
 import numpy as np
+import os
+from sklearn.metrics import cohen_kappa_score
+import pdb
 
 from annotation import Annotation
 from annotated_span import annotation_labels
+import scorer
 
 
 class Agreement():
     """ Holds settings, data and methods for calculating agreement between annotators on spans in multiple fics """
 
-    def __init__(self, annotator_names, annotations_dirpath, fic_csv_dirpath=None)
+    def __init__(self, annotator_names, annotations_dirpath, fic_csv_dirpath=None):
         """ Args:
                 annotator_names: list of the names of annotators. 
                     Should correspond to the suffixes of files in the annotations_dirpath as _name.csv.
@@ -31,37 +35,45 @@ class Agreement():
         fandom_fnames = ['_'.join(fname.split('_')[:2]) for fname in os.listdir(self.annotations_dirpath) if fname.endswith(f'_{annotator}.csv')]
         return set(fandom_fnames)
 
-    def calculate_agreement(self, extraction=True, attribution=True, metric='cohen'):
+    def calculate_agreement(self, span_type, extraction=True, attribution=True, metric='cohen'):
         """ Calculate average agreement on annotations on fics
+            Args:
+                span_type: {coref, quotes}
         """
 
         fandom_fnames = self.get_fnames(self.annotators[0])
         agreements = [] # list of namedtuples (extraction, attribution)
 
         for annotator in self.annotators[1:]:
-            fandom_fnames = fandom_fnames.intersection(self.get_fnames[annotator])
-        for fandom_fname in fandom_fnames:
-            agreements.append(self.fic_agreement(fandom_fname, extraction=extraction, attribution=attribution, metric=metric))
+            fandom_fnames = fandom_fnames.intersection(self.get_fnames(annotator))
         print(f'Agreement between {" and ".join(self.annotators)}:')
+        for fandom_fname in sorted(fandom_fnames):
+            agreements.append(self.fic_agreement(fandom_fname, span_type, extraction=extraction, attribution=attribution, metric=metric))
+            print(f"\tAgreement on {fandom_fname}: \n{agreements[-1]}")
         if extraction:
             avg_extraction_agreement = np.mean([scores.extraction for scores in agreements])
-            # Print agreement
-            print(f'\tExtraction {metric}: {avg_extraction_agreement}')
+            # Print average agreement
+            print()
+            print(f'\Avg extraction {metric}: {avg_extraction_agreement}')
         if attribution:
             avg_matched_attribution_agreement = np.mean([scores.matched_attribution for scores in agreements])
             avg_total_attribution_agreement = np.mean([scores.total_attribution for scores in agreements])
-            print(f'\tAttribution on matched extractions {metric}: {avg_matched_attribution_agreement}')
-            print(f'\tAttribution on total extractions {metric}: {avg_total_attribution_agreement}')
+            print(f'\tAvg attribution on matched extractions {metric}: {avg_matched_attribution_agreement}')
+            print(f'\tAvg attribution on total extractions {metric}: {avg_total_attribution_agreement}')
 
-    def fic_agreement(self, fandom_fname, extraction=True, attribution=True, metric='cohen'):
+    def fic_agreement(self, fandom_fname, span_type, extraction=True, attribution=True, metric='cohen'):
         """ Calculate annotation on a fic. 
             Returns namedtuple (extraction, attribution) for that fic.
         """
 
         # Load annotations
         fic_annotations = {}
+        if span_type == 'coref':
+            file_ext = 'entity_clusters'
+        elif span_type == 'quotes':
+            file_ext = 'quote_attribution'
         for annotator in self.annotators:
-            fic_annotations[annotator] = Annotation(self.annotations_dirpath, fandom_fname, file_ext='_{annotator}.csv', fic_csv_dirpath=self.fic_csv_dirpath)
+            fic_annotations[annotator] = Annotation(self.annotations_dirpath, fandom_fname, file_ext=f'_{file_ext}_{annotator}.csv', fic_csv_dirpath=self.fic_csv_dirpath)
 
         # Extraction agreement
         if extraction:
@@ -87,7 +99,7 @@ class Agreement():
         score = 0
         if metric == 'cohen':
             assert len(bio) == 2
-            cohen = cohen_kappa_score(bio[list(bio.keys)[0]], bio[list(bio.keys[1]))
+            score = cohen_kappa_score(bio[list(bio.keys())[0]], bio[list(bio.keys())[1]])
         return score
 
     def attribution_agreement(self, fic_annotations, metric='cohen'):      
@@ -97,8 +109,9 @@ class Agreement():
         assert len(self.annotators) == 2 # right now can't handle more than 2 annotators
         annotations1 = fic_annotations[list(fic_annotations.keys())[0]]
         annotations2 = fic_annotations[list(fic_annotations.keys())[1]]
-        matched_attributions, mismatched_attributions, mismatched_extractions = annotation_labels(annotations1, annotations2)
+        matched_attributions, mismatched_attributions, mismatched_extractions = annotation_labels(annotations1.annotations, annotations2.annotations)
         matched_attribution_agreement, total_attribution_agreement = scorer.score_attribution_labels(matched_attributions, mismatched_attributions, mismatched_extractions, metric=metric)
+        return total_attribution_agreement, matched_attribution_agreement
 
 
 def main():
@@ -113,15 +126,15 @@ def main():
 
     config = ConfigParser(allow_no_value=False)
     config.read(args.config_fpath)
-    fic_csv_dirpath = baseline_config.get('Filepaths', 'fic_csv_dirpath')
+    fic_csv_dirpath = config.get('Filepaths', 'fic_csv_dirpath')
     if args.evaluate_coref:
         annotations_dirpath = config.get('Filepaths', 'coref_annotations_dirpath')
         agreement = Agreement(args.annotators, annotations_dirpath, fic_csv_dirpath=fic_csv_dirpath)
-        agreement.calculate_agreement()
+        agreement.calculate_agreement('coref')
     if args.evaluate_quotes:
         annotations_dirpath = config.get('Filepaths', 'quote_annotations_dirpath')
         agreement = Agreement(args.annotators, annotations_dirpath, fic_csv_dirpath=fic_csv_dirpath)
-        agreement.calculate_agreement()
+        agreement.calculate_agreement('quotes')
 
 
 if __name__ == '__main__':

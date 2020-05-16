@@ -5,7 +5,7 @@ import numpy as np
 import itertools
 from sklearn.metrics import cohen_kappa_score
 
-from annotated_span import AnnotatedSpan, group_annotations, match_spans, match_annotated_spans
+from annotated_span import AnnotatedSpan, group_annotations, match_spans, match_annotated_spans, normalize_annotations
 
 
 def score_attribution_labels(matched_labels, mismatched_labels, mismatched_extraction_labels, metric='cohen'):
@@ -16,20 +16,45 @@ def score_attribution_labels(matched_labels, mismatched_labels, mismatched_extra
 
         Returns score_on_matched_extractions, score_on_all_extractions
     """
+
+    if len(matched_labels) == 0:
+        return (0,0)
+
     # Build corresponding lists of attributions
-    matched_labels1, matched_labels2 = list(zip(*matched_attributions))
-    mismatched_labels1, mismatched_labels2 = list(zip(*mismatched_attributions))
-    mismatched_ext_labels1, mismatched_ext_labels2 = list(zip(*mismatched_extractions))
+    matched_labels1 = list(list(zip(*matched_labels))[0])
+    matched_labels2 = list(list(zip(*matched_labels))[1])
+    if len(mismatched_labels) == 0:
+        mismatched_labels1 = []
+        mismatched_labels2 = []
+    else:
+        mismatched_labels1 = list(list(zip(*mismatched_labels))[0])
+        mismatched_labels2 = list(list(zip(*mismatched_labels))[1])
+    if len(mismatched_extraction_labels) == 0:
+        mismatched_ext_labels1 = []
+        mismatched_ext_labels2 = []
+    else:
+        mismatched_ext_labels1 = list(list(zip(*mismatched_extraction_labels))[0])
+        mismatched_ext_labels2 = list(list(zip(*mismatched_extraction_labels))[1])
 
     # Calculate attribution agreement on matched extractions
     ext_labels1 = matched_labels1 + mismatched_labels1
     ext_labels2 = matched_labels2 + mismatched_labels2
-    score_on_matched_extractions = cohen_kappa_score(ext_labels1, ext_labels2)
+    
+    # Normalize character names to IDs
+    annotations1 = matched_labels1 + mismatched_labels1 + mismatched_ext_labels1
+    annotations2 = matched_labels2 + mismatched_labels2 + mismatched_ext_labels2
+    char2id = normalize_annotations(annotations1, annotations2)
+
+    vals1 = [char2id[span.annotation] for span in ext_labels1]
+    vals2 = [char2id[span.annotation] for span in ext_labels2]
+    score_on_matched_extractions = cohen_kappa_score(vals1, vals2)
 
     # Calculate attribution agreement on all extractions
     labels1 = matched_labels1 + mismatched_labels1 + mismatched_ext_labels1
     labels2 = matched_labels2 + mismatched_labels2 + mismatched_ext_labels2
-    score_on_all_extractions = cohen_kappa_score(labels1, labels2)
+    vals1 = [char2id[span.annotation] for span in labels1]
+    vals2 = [char2id[span.annotation] for span in labels2]
+    score_on_all_extractions = cohen_kappa_score(vals1, vals2)
 
     return score_on_matched_extractions, score_on_all_extractions
 
@@ -160,7 +185,7 @@ def print_quote_scores(predicted_quotes, gold_quotes, exact_match=True):
     """ Prints quote extraction and attribution scores """
 
     # Precision, recall of the quote extraction (the markables)
-    matched_gold_quotes, matched_pred_quotes, false_positives, false_negatives = match_spans(predicted_quotes, gold_quotes, exact=exact_match)
+    matched_pred_quotes, matched_gold_quotes, false_positives, false_negatives = match_spans(predicted_quotes, gold_quotes, exact=exact_match)
     if len(predicted_quotes) == 0:
         if len(gold_quotes) == 0:
             precision = 1
