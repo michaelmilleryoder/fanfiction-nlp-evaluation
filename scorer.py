@@ -5,7 +5,7 @@ import numpy as np
 import itertools
 from sklearn.metrics import cohen_kappa_score
 
-from annotated_span import AnnotatedSpan, group_annotations, match_spans, match_annotated_spans, normalize_annotations
+from annotated_span import AnnotatedSpan, group_annotations, match_spans, match_annotated_spans, normalize_annotations_to_id
 
 
 def score_attribution_labels(matched_labels, mismatched_labels, mismatched_extraction_labels, metric='cohen'):
@@ -18,7 +18,10 @@ def score_attribution_labels(matched_labels, mismatched_labels, mismatched_extra
     """
 
     if len(matched_labels) == 0:
-        return (0,0)
+        if len(mismatched_labels) == 0 and len(mismatched_extraction_labels) == 0: # nothing predicted
+            return (1.0,1.0)
+        else:
+            return (0.0,0.0)
 
     # Build corresponding lists of attributions
     matched_labels1 = list(list(zip(*matched_labels))[0])
@@ -43,7 +46,7 @@ def score_attribution_labels(matched_labels, mismatched_labels, mismatched_extra
     # Normalize character names to IDs
     annotations1 = matched_labels1 + mismatched_labels1 + mismatched_ext_labels1
     annotations2 = matched_labels2 + mismatched_labels2 + mismatched_ext_labels2
-    char2id = normalize_annotations(annotations1, annotations2)
+    char2id = normalize_annotations_to_id(annotations1, annotations2)
 
     vals1 = [char2id[span.annotation] for span in ext_labels1]
     vals2 = [char2id[span.annotation] for span in ext_labels2]

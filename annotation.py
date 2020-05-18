@@ -8,7 +8,7 @@ import pdb
 from fic_representation import FicRepresentation
 import evaluation_utils as utils
 
-from annotated_span import AnnotatedSpan
+from annotated_span import AnnotatedSpan, all_characters, group_annotations, normalize_annotations_to_name
 
 
 class Annotation(FicRepresentation):
@@ -16,7 +16,6 @@ class Annotation(FicRepresentation):
     def __init__(self, annotations_dirpath, fandom_fname, file_ext='.csv', fic_csv_dirpath=None):
         super().__init__(fandom_fname, fic_csv_dirpath=fic_csv_dirpath)
         self.file_path = os.path.join(annotations_dirpath, f'{fandom_fname}{file_ext}')
-        self.extract_annotated_spans()
 
     def extract_annotated_spans(self):
         """ Load gold fic annotations, match text to mentions
@@ -57,6 +56,18 @@ class Annotation(FicRepresentation):
             if not (mention.chap_id, mention.para_id) in para_tokens:
                 raise ValueError(f"Chapter ID and paragraph ID in {mention} not present in fic {self.file_path}")
             mention.text = ' '.join(para_tokens[(mention.chap_id, mention.para_id)][mention.start_token_id-1:mention.end_token_id])
+
+    def save_annotated_spans(self, annotations):
+        """ Normalize annotatations, save in format of one column/character """
+        normalized_annotations = normalize_annotations_to_name(annotations)
+        grouped = group_annotations(normalized_annotations)
+        output = {}
+        longest_column = max([len(spans) for spans in grouped.values()])
+        for char, spans in grouped.items():
+            output[char] = [span.readable_span() for span in spans] + [''] * (longest_column - len(spans))
+        df = pd.DataFrame(output)
+        df.to_csv(self.file_path, index=False)
+        print(f"Annotated spans saved to {self.file_path}")
 
     def annotation_bio(self):
         """ Returns a sequence of token-level BIO annotations """

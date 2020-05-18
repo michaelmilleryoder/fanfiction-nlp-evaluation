@@ -34,6 +34,7 @@ class Evaluator():
         
         # Load gold mentions
         gold = Annotation(self.coref_annotations_dirpath, fandom_fname, file_ext=self.coref_annotations_ext, fic_csv_dirpath=self.fic_csv_dirpath)
+        gold.extract_annotated_spans()
 
         # Load predicted mentions
         fic_representation.extract_character_mentions(save_dirpath=self.predicted_coref_outpath)
@@ -50,6 +51,7 @@ class Evaluator():
         # Quote extraction evaluation
         # Load gold quote spans
         gold = Annotation(self.quote_annotations_dirpath, fandom_fname, file_ext=self.quote_annotations_ext, fic_csv_dirpath=self.fic_csv_dirpath)
+        gold.extract_annotated_spans()
 
         # Load predicted quote spans (from BookNLP output to Quote objects)
         fic_representation.extract_quotes(save_dirpath=self.predicted_quotes_outpath)

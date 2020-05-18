@@ -90,7 +90,6 @@ def annotation_labels(attributions1, attributions2, matched=False, mismatched_ex
         else:
             mismatched_attributions.append((span1, span2))
 
-    # Total attribution score (including mismatched extractions)
     for span in spans_1not2:
         mismatched_extractions.append((span, span.null_span()))
     for span in spans_2not1:
@@ -99,8 +98,10 @@ def annotation_labels(attributions1, attributions2, matched=False, mismatched_ex
     return matched_attributions, mismatched_attributions, mismatched_extractions
 
 
-def normalize_annotations(annotations1, annotations2):
-    """ Returns a dictionary of character name to the same ID if the characters match """
+def normalize_annotations_to_id(annotations1, annotations2):
+    """ Returns a dictionary of character name to the same ID if the characters match.
+        Pass the same annotations twice to reduce a single set of annotations.
+    """
     char2id = {}
     current_id = 0
     labels1 = set([span.annotation for span in annotations1])
@@ -121,6 +122,29 @@ def normalize_annotations(annotations1, annotations2):
             current_id += 1
 
     return char2id
+
+
+def normalize_annotations_to_name(annotations):
+    """ Returns annotations with character names normalized such that no character name
+        matches another.
+        Keeps the first seen instance of character names that match each other.
+    """
+    # TODO: Merge with normalize_annotations_to_id
+    normalized = [] # list of normalized names
+    normalized_annotations = []
+    for span in annotations:
+        for name in normalized:
+            if span.annotation == name: # plain match, for speed
+                normalized_annotations.append(span)
+                break
+            elif characters_match(span.annotation, name):
+                normalized_annotations.append(span.change_annotation(name))
+                break
+        else:
+            normalized.append(span.annotation)
+            normalized_annotations.append(span)
+
+    return normalized_annotations
 
 
 def group_annotations(spans):
@@ -171,16 +195,39 @@ def characters_match(char1, char2):
     return match
 
 
-def get_union_quotes(gold_quotes, baseline_quotes, experimental_quotes):
-    """ Returns the union of all quote spans [old, would need to be changed to use] """
+def spans_union(spans_list, exact=True, attribution_conflicts='remove'):
+    """ Returns the union of all spans, handling attributions 
+        Args:
+            spans_list: list of lists of AnnotatedSpan objects
+            exact: whether the match should be exact
+            attribution_conflicts: what do with mismatching attributions {'remove', 'ignore'}
+    """
 
-    all_quote_spans = gold_quotes
-    exclusive_baseline = [baseline_quote for baseline_quote in baseline_quotes if not any([baseline_quote.extraction_matches(quote, exact=False) for quote in all_quote_spans])]
-    all_quote_spans += exclusive_baseline
-    exclusive_experimental = [experimental_quote for experimental_quote in experimental_quotes if not any([experimental_quote.extraction_matches(quote, exact=False) for quote in all_quote_spans])]
-    all_quote_spans += exclusive_experimental
+    all_spans = spans_list[0]
+    for spans in spans_list[1:]:
+        new_spans = []
+        attribution_conflicts = []
+        for span in spans:
+            for existing_span in all_spans:
+                if span.span_matches(existing_span, exact=exact):
+                    if not characters_match(span.annotation, existing_span.annotation):
+                       attribution_conflicts.append(span)
+                    break # everything matches, don't add
+            else:
+                new_spans.append(span)
+        all_spans += new_spans
 
-    return all_quote_spans
+    pdb.set_trace()
+    if attribution_conflicts == 'remove':
+        all_spans = [span for span in all_spans if not any([span.span_matches(conflict_span) for conflict_span in attribution_conflicts])]
+
+    return all_spans
+
+
+def all_characters(spans):
+    """ Returns all unique annotations (characters) from a list of AnnotatedSpan objects """
+    return sorted(set([span.annotation for span in spans]))
+
 
 class AnnotatedSpan():
 
@@ -201,6 +248,13 @@ class AnnotatedSpan():
     def __repr__(self):
         return f"{self.chap_id}.{self.para_id}.{self.start_token_id}-{self.end_token_id},annotation={self.annotation}"
 
+    def readable_span(self):
+        if self.start_token_id == self.end_token_id:
+            outstring = f"{self.chap_id}.{self.para_id}.{self.start_token_id}"
+        else:
+            outstring = f"{self.chap_id}.{self.para_id}.{self.start_token_id}-{self.end_token_id}"
+        return outstring
+
     def null_span(self):
         """ Returns an identical span but with a NULL annotation"""
         return AnnotatedSpan(
@@ -209,6 +263,15 @@ class AnnotatedSpan():
             start_token_id=self.start_token_id, 
             end_token_id=self.end_token_id, 
             annotation='NULL')
+
+    def change_annotation(self, new_annotation):
+        """ Returns an identical span but annotated with new_annotation"""
+        return AnnotatedSpan(
+            chap_id=self.chap_id,
+            para_id=self.para_id, 
+            start_token_id=self.start_token_id, 
+            end_token_id=self.end_token_id, 
+            annotation=new_annotation)
 
     def get_location(self):
         return (self.chap_id, self.para_id, self.start_token_id, self.end_token_id)
