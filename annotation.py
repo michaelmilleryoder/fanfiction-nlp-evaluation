@@ -59,10 +59,15 @@ class Annotation(FicRepresentation):
 
     def save_annotated_spans(self, annotations):
         """ Normalize annotatations, save in format of one column/character """
+        if len(annotations) == 0:
+            print(f"No annotations found. Manually create {self.file_path}")
+            return
+            
         normalized_annotations = normalize_annotations_to_name(annotations)
         grouped = group_annotations(normalized_annotations)
         output = {}
-        longest_column = max([len(spans) for spans in grouped.values()])
+        span_lengths = [len(spans) for spans in grouped.values()]
+        longest_column = max(span_lengths)
         for char, spans in grouped.items():
             output[char] = [span.readable_span() for span in spans] + [''] * (longest_column - len(spans))
         df = pd.DataFrame(output)

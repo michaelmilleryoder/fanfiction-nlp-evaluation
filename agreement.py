@@ -144,7 +144,7 @@ class Agreement():
             if self.span_type == 'coref':
                 gold_annotations = Annotation(self.annotations_dirpath, fandom_fname, file_ext='_entity_clusters.csv')
             elif self.span_type == 'quotes':
-                gold_annotations = Annotation(annotations_dirpath, fandom_fname, file_ext='_quote_attribution.csv')
+                gold_annotations = Annotation(self.annotations_dirpath, fandom_fname, file_ext='_quote_attribution.csv')
             gold_annotations.save_annotated_spans(annotations)
             
 

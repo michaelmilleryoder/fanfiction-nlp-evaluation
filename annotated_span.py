@@ -13,7 +13,7 @@ def match_spans(predicted_spans, gold_spans, exact=True):
             gold_quotes: AnnotatedSpan objects annotated as gold truth
             exact: whether an exact match on token IDs is necessary.
                 For the FanfictionNLP pipeline, this should be the case.
-                For baseline systems that might have different tokenization,
+                For baseline systems that might have different tokenization;
                 this can be set to False to relax that constraint.
     """
 
@@ -184,8 +184,9 @@ def characters_match(char1, char2):
             if part1 == part2:
                 n_parts_match += 1
 
-    # Determine match    
-    if n_parts_match == 1 and (len(char1_parts) == 1 or len(char2_parts) == 1):
+    # Determine match
+    not_surnames = ['male', 'female']
+    if n_parts_match == 1 and (len(char1_parts) == 1 or len(char2_parts) == 1) and not any([w in char1_parts for w in not_surnames]) and not any([w in char2_parts for w in not_surnames]):
         match = True
     elif n_parts_match > len(set(char1_parts + char2_parts))/2:
         match = True
@@ -206,20 +207,19 @@ def spans_union(spans_list, exact=True, attribution_conflicts='remove'):
     all_spans = spans_list[0]
     for spans in spans_list[1:]:
         new_spans = []
-        attribution_conflicts = []
+        mismatched_attributions = []
         for span in spans:
             for existing_span in all_spans:
                 if span.span_matches(existing_span, exact=exact):
                     if not characters_match(span.annotation, existing_span.annotation):
-                       attribution_conflicts.append(span)
-                    break # everything matches, don't add
+                       mismatched_attributions.append(span)
+                    break # everything matches, don't add as a unique span
             else:
                 new_spans.append(span)
         all_spans += new_spans
 
-    pdb.set_trace()
     if attribution_conflicts == 'remove':
-        all_spans = [span for span in all_spans if not any([span.span_matches(conflict_span) for conflict_span in attribution_conflicts])]
+        all_spans = [span for span in all_spans if not any([span.span_matches(conflict_span) for conflict_span in mismatched_attributions])]
 
     return all_spans
 

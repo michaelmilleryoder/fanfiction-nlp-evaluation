@@ -51,7 +51,6 @@ class PipelineOutput(FicRepresentation):
         predicted_quotes_json = self.load_quote_json()
 
         for quote_entry in predicted_quotes_json:
-            
             character = quote_entry['speaker']
             chap_id = quote_entry['chapter']
             para_id = quote_entry['paragraph']

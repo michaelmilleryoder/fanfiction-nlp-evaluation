@@ -195,7 +195,7 @@ def print_quote_scores(predicted_quotes, gold_quotes, exact_match=True):
         else:
             precision = 0
     else:
-        precision = len(matched_pred_quotes)/len(predicted_quotes)
+        precision = min(len(matched_pred_quotes)/len(predicted_quotes), 1)
     if len(gold_quotes) == 0:
         recall = 1 # everyone gets perfect recall if there are no quotes
     else:

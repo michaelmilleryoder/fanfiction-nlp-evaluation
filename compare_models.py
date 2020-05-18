@@ -63,7 +63,7 @@ class ModelComparer():
         print(f"Comparing {self.baseline_name} to {self.experimental_name} on {self.dataset}")
 
         # Build ordered predictions for gold, baseline, experimental
-        for fname in sorted(os.listdir(self.baseline_quotes_dirpath)):
+        for fname in sorted(os.listdir(self.fic_csv_dirpath)):
             fandom_fname = fname.split('.')[0]
             self.compare_fic(fandom_fname)
 
@@ -112,7 +112,9 @@ class ModelComparer():
         """ Load quote or coref predictions and gold spans for a fic.
             Returns gold_spans, baseline_spans, experimental_spans
         """
-        gold_spans = Annotation(gold_dirpath, fandom_fname, file_ext=gold_annotations_ext, fic_csv_dirpath=self.fic_csv_dirpath).annotations
+        gold_annotation = Annotation(gold_dirpath, fandom_fname, file_ext=gold_annotations_ext, fic_csv_dirpath=self.fic_csv_dirpath)
+        gold_annotation.extract_annotated_spans()
+        gold_spans = gold_annotation.annotations
         baseline_spans = utils.load_pickle(baseline_dirpath, fandom_fname)
         experimental_spans = utils.load_pickle(experimental_dirpath, fandom_fname)
 
@@ -126,8 +128,8 @@ class ModelComparer():
         """
         baseline_correct = [int(characters_match(pred_span.annotation, gold_span.annotation)) for pred_span, gold_span in zip(self.ordered_predictions[span_type]['baseline'], self.ordered_predictions[span_type]['gold'])]
         experimental_correct = [int(characters_match(pred_span.annotation, gold_span.annotation)) for pred_span, gold_span in zip(self.ordered_predictions[span_type]['experimental'], self.ordered_predictions[span_type]['gold'])]
-        print(f'\tBaseline correct: {sum(baseline_correct)} / {len(baseline_correct)}')
-        print(f'\tExperimental correct: {sum(experimental_correct)} / {len(experimental_correct)}')
+        print(f'\tBaseline ({self.baseline_name}) correct: {sum(baseline_correct)} / {len(baseline_correct)}')
+        print(f'\tExperimental ({self.experimental_name}) correct: {sum(experimental_correct)} / {len(experimental_correct)}')
 
         result = ttest_rel(baseline_correct, experimental_correct)
         #result = ttest_ind(baseline_correct, experimental_correct)
