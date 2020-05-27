@@ -4,12 +4,15 @@ import json
 import pickle
 import pdb
 import csv
+import re
 import pandas as pd
 import numpy as np
-from collections import Counter
+from collections import Counter, defaultdict
 
 from fic_representation import FicRepresentation
+from booknlp_wrapper import BookNLPWrapper
 from annotated_span import AnnotatedSpan
+from annotation import Annotation
 import evaluation_utils as utils
 
 
@@ -30,7 +33,7 @@ def modify_paragraph_id(para_id, trouble_line):
 class BookNLPOutput(FicRepresentation):
     """ Holds representation for the BookNLP processed output of a fic. """
 
-    def __init__(self, token_output_dirpath, json_output_dirpath, fandom_fname, fic_csv_dirpath=None, token_file_ext='.tokens'): 
+    def __init__(self, token_output_dirpath, fandom_fname, json_output_dirpath=None, fic_csv_dirpath=None, token_file_ext='.tokens'): 
         """ 
         Args:
             csv_dirpath: path to directory with corresponding original fic CSV
@@ -38,13 +41,19 @@ class BookNLPOutput(FicRepresentation):
         
         """
         super().__init__(fandom_fname, fic_csv_dirpath=fic_csv_dirpath)
-        self.original_token_data = pd.read_csv(os.path.join(token_output_dirpath, f'{fandom_fname}{token_file_ext}'), sep='\t', quoting=csv.QUOTE_NONE)
+        self.original_token_output_dirpath = token_output_dirpath
+        self.modified_token_output_dirpath = token_output_dirpath
+        self.original_token_fpath = os.path.join(token_output_dirpath, f'{fandom_fname}{token_file_ext}')
+        self.modified_token_fpath = self.original_token_fpath
+        self.original_token_data = pd.read_csv(self.original_token_fpath, sep='\t', quoting=csv.QUOTE_NONE)
         self.token_data = self.original_token_data.copy()
-        self.json_fpath = os.path.join(json_output_dirpath, self.fandom_fname, 'book.id.book')
+        self.original_json_dirpath = json_output_dirpath
+        self.modified_json_dirpath = json_output_dirpath
         self.token_file_ext = token_file_ext
 
     def load_json_output(self):
-        with open(self.json_fpath, 'r') as f:
+        json_fpath = os.path.join(self.modified_json_dirpath, self.fandom_fname, 'book.id.book')
+        with open(json_fpath, 'r') as f:
             self.json_data = json.load(f)
 
     def align_with_annotations(self):
@@ -61,6 +70,7 @@ class BookNLPOutput(FicRepresentation):
         # Compare number of paragraphs
         n_diff = self.check_paragraph_breaks()
         if n_diff != 0:
+            pdb.set_trace() # shouldn't be any difference after whitespace tokenization
             self.fix_paragraph_breaks(n_diff)
 
         print("\tChecking/fixing token alignment...")
@@ -68,6 +78,7 @@ class BookNLPOutput(FicRepresentation):
         ## Make sure token IDs align
         misaligned_rows = self.get_misaligned_paragraph()
         if len(misaligned_rows) > 0:
+            pdb.set_trace() # shouldn't be any difference after whitespace tokenization
             #print(f"\tFound {len(misaligned_rows)} misaligned rows")
             self.fix_token_misalignment(misaligned_rows)
 
@@ -114,24 +125,6 @@ class BookNLPOutput(FicRepresentation):
     def modify_paragraph_ids(self, trouble_line):
         
         self.token_data['full_paragraphId'] = [modify_paragraph_id(para_id, trouble_line) for para_id in self.token_data['paragraphId']]
-
-    def find_mismatched_paragraphs(self, n_diff):
-        """ Right now only handles 1 mismatch """
-
-        if n_diff != 1:
-            pdb.set_trace()
-
-        trouble_line = -1
-
-        booknlp_paras = self.token_data.groupby('paragraphId').agg({'originalWord': lambda x: ' '.join(x.tolist())})['originalWord']
-
-        for i, (booknlp_para, fic_para) in enumerate(zip(booknlp_paras, self.fic_csv['text_tokenized'])):
-            # There will be tokenization differences, so look for dramatic differences
-            if abs(len(booknlp_para.split()) - len(fic_para.split())) > 10:
-                trouble_line = i
-                break
-
-        return trouble_line
 
     def find_mismatched_paragraphs(self, n_diff):
         """ Right now only handles 1 mismatch """
@@ -326,13 +319,15 @@ class BookNLPOutput(FicRepresentation):
 
         # Get AnnotatedSpan objects from all characters from BookNLP JSON
         for char in self.json_data['characters']:
+            if len(char['names']) == 0:
+                pdb.set_trace()
             char_name = char['names'][0]['n'] # take first name as name
             for utterance in char['speaking']:
                 text = utterance['w']
                 quote_length = len(text.split())
                 matching_token_data = self.token_data.loc[self.token_data['tokenId'].isin(range(utterance['i'], utterance['i'] + quote_length))]
 
-                # TODO: check if the tokens in the matching token data match the quote. If not try to search for the text
+                # Check if the tokens in the matching token data match the quote. If not try to search for the text
                 matching_tokens = matching_token_data['originalWord'].tolist()
                 if not AnnotatedSpan(text=' '.join(matching_tokens)).span_matches(AnnotatedSpan(text=text)):
                     found_quote_indices = utils.sublist_indices(text.split()[1:-1], self.token_data['normalizedWord'].tolist())
@@ -358,3 +353,99 @@ class BookNLPOutput(FicRepresentation):
 
         if save_dirpath is not None:
             self.pickle_output(save_dirpath, self.quotes)
+
+    def modify_quote_tokens(self, quote_annotations_dirpath=None, quote_annotations_ext=None, change_to='gold'):
+        """ Changes quote tokens to gold quote extractions so BookNLP will recognize them.
+            Args:
+                change_to:
+                    'gold': Change to gold quote extractions
+                    'strict': Only change existing BookNLP quotes before I changed to whitespace tokenization. That is, single quotes to ` and ', double quotes to `` and ''
+        """
+        if change_to == 'gold':
+            # Load gold quote extractions
+            gold = Annotation(quote_annotations_dirpath, self.fandom_fname, file_ext=quote_annotations_ext, fic_csv_dirpath=self.fic_csv_dirpath)
+            gold.extract_annotated_spans()
+
+            # Modify original tokens file; already doesn't have recognizable quotes with whitespace tokenization
+            for span in gold.annotations:
+                self.add_quote_span(span)
+            
+            # Save out
+            self.modified_token_output_dirpath = self.modified_token_output_dirpath.rstrip('/') + '_gold_quotes'
+            if not os.path.exists(self.modified_token_output_dirpath):
+                os.mkdir(self.modified_token_output_dirpath)
+            self.modified_token_fpath = os.path.join(self.modified_token_output_dirpath, f'{self.fandom_fname}{self.token_file_ext}')
+            self.token_data.to_csv(self.modified_token_fpath, sep='\t', quoting=csv.QUOTE_NONE, index=False)
+
+        elif change_to == 'strict':
+            quote_changes = {
+                "“": "``",
+                "”": "''",
+            }
+            self.token_data['normalizedWord'] = self.token_data['normalizedWord'].map(lambda x: quote_changes.get(x, x))
+            self.token_data['lemma'] = self.token_data['lemma'].map(lambda x: quote_changes.get(x, x))
+
+    def modify_coref_tokens(self, coref_annotations_dirpath, coref_annotations_ext):
+        """ Changes coref tokens to gold annotations in self.token_data.
+            Saves out to {token_output_dirpath}_gold_coref/token_fpath
+        """
+        # Load gold mentions
+        gold = Annotation(coref_annotations_dirpath, self.fandom_fname, file_ext=coref_annotations_ext, fic_csv_dirpath=self.fic_csv_dirpath)
+        gold.extract_annotated_spans()
+
+        # Build character name to id dictionary
+        self.char_name2id = defaultdict(lambda: len(self.char_name2id))
+        #self.char_name2id = {charname: len(self.char_name2id) for charname in sorted(gold.annotations_set)}
+
+        # Clear existing character coref annotations
+        self.token_data['characterId'] = -1
+
+        # Modify original tokens file
+        for span in gold.annotations:
+            self.modify_coref_span(span)
+        
+        # Save out
+        self.modified_token_output_dirpath = self.modified_token_output_dirpath.rstrip('/') + '_gold_coref'
+        if not os.path.exists(self.modified_token_output_dirpath):
+            os.mkdir(self.modified_token_output_dirpath)
+        self.modified_token_fpath = os.path.join(self.modified_token_output_dirpath, f'{self.fandom_fname}{self.token_file_ext}')
+        self.token_data.to_csv(self.modified_token_fpath, sep='\t', quoting=csv.QUOTE_NONE, index=False)
+        #print(f"Wrote gold coref token file to {self.modified_token_fpath}")
+
+    def modify_coref_span(self, span):
+        """ Modify token data to match gold span """
+        for i in range(span.start_token_id, span.end_token_id + 1):
+            self.token_data.loc[(self.token_data['chapterId']==span.chap_id) & (self.token_data['modified_paragraphId']==span.para_id) & (self.token_data['modified_tokenId']==i), 'characterId'] = self.char_name2id[span.annotation]
+
+    def add_quote_span(self, span):
+        """ Add quote marks so that BookNLP recognizes a span in self.token_data"""
+        start_span_filter = (self.token_data['chapterId']==span.chap_id) & (self.token_data['modified_paragraphId']==span.para_id) & (self.token_data['modified_tokenId']==span.start_token_id)
+        end_span_filter = (self.token_data['chapterId']==span.chap_id) & (self.token_data['modified_paragraphId']==span.para_id) & (self.token_data['modified_tokenId']==span.end_token_id)
+        start_span_token = self.token_data.loc[start_span_filter, 'normalizedWord'].values[0]
+        end_span_token = self.token_data.loc[end_span_filter, 'normalizedWord'].values[0]
+
+        # Check for alphanumeric characters or periods
+        #pattern = re.compile(r'[A-Za-z0-9\.]')
+        #if re.search(pattern, start_span_token):
+        #    pdb.set_trace()
+        #if re.search(pattern, end_span_token):
+        #    pdb.set_trace()
+
+        # Set tokens to recognizable quotes
+        self.token_data.loc[start_span_filter, 'normalizedWord'] = '``'
+        self.token_data.loc[start_span_filter, 'lemma'] = '``'
+        self.token_data.loc[end_span_filter, 'normalizedWord'] = "''"
+        self.token_data.loc[end_span_filter, 'lemma'] = "''"
+        
+
+    def run_booknlp_quote_attribution(self):
+        """ Run booknlp-quote-attribution on modified token file.
+            Saves to spot in modified_json_dirpath, which is read in evaluate_quotes()
+        """ 
+        # Run BookNLP on modified token file
+        added_to_token_fpath = self.modified_token_output_dirpath.replace(self.original_token_output_dirpath.rstrip('/'), '')
+        self.modified_json_dirpath = self.original_json_dirpath.rstrip('/') + added_to_token_fpath
+        if not os.path.exists(self.modified_json_dirpath):
+            os.mkdir(self.modified_json_dirpath)
+        wrapper = BookNLPWrapper(self.modified_token_fpath, os.path.join(self.modified_json_dirpath, self.fandom_fname))
+        wrapper.run()

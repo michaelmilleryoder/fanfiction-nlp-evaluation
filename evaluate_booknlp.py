@@ -16,6 +16,7 @@ import argparse
 
 from evaluator import Evaluator
 from booknlp_output import BookNLPOutput
+from booknlp_wrapper import BookNLPWrapper
 import evaluation_utils as utils
 
 
@@ -26,6 +27,8 @@ class BookNLPEvaluator(Evaluator):
 
     def __init__(self, token_output_dirpath, json_output_dirpath, fic_csv_dirpath, 
                     evaluate_coref=False, evaluate_quotes=False,
+                    coref_from='booknlp', quotes_from='booknlp',
+                    run_quote_attribution=False,
                     coref_annotations_dirpath=None,
                     quote_annotations_dirpath=None,
                     predicted_coref_outpath=None,
@@ -33,42 +36,64 @@ class BookNLPEvaluator(Evaluator):
                     token_file_ext='.tokens'):
 
         super().__init__(fic_csv_dirpath,
-                    evaluate_coref, evaluate_quotes,
-                    coref_annotations_dirpath,
-                    quote_annotations_dirpath,
-                    predicted_coref_outpath,
-                    predicted_quotes_outpath)
+                    evaluate_coref=evaluate_coref, evaluate_quotes=evaluate_quotes,
+                    coref_annotations_dirpath=coref_annotations_dirpath,
+                    quote_annotations_dirpath=quote_annotations_dirpath,
+                    predicted_coref_outpath=predicted_coref_outpath,
+                    predicted_quotes_outpath=predicted_quotes_outpath,
+                    coref_from=coref_from,
+                    quotes_from=quotes_from,
+                    run_quote_attribution=run_quote_attribution)
 
         self.token_output_dirpath = token_output_dirpath
         self.json_output_dirpath = json_output_dirpath
         self.token_file_ext = token_file_ext
 
     def evaluate(self):
+
         for fname in sorted(os.listdir(self.token_output_dirpath)):
             fandom_fname = fname.split('.')[0]
-        
             print(fandom_fname)
             sys.stdout.flush()
-
             self.evaluate_fic(fandom_fname)
 
-    def evaluate_fic(self, fandom_fname):
-
+    def load_fic_output(self, fandom_fname, modified=False, align=True):
+        """ Loads a fic.
+            Args:
+                modified: load from self.modified_token_output_dirpath
+                align: align the output with the original fic CSV, get chapter, paragraph, token ID columns that match annotation
+            Returns:
+                a BookNLPOutput object 
+        """
         print("\tLoading file...")
         sys.stdout.flush()
-        # Load output, CSV file of fic
-        booknlp_output = BookNLPOutput(self.token_output_dirpath, self.json_output_dirpath, fandom_fname, fic_csv_dirpath=self.fic_csv_dirpath, token_file_ext=self.token_file_ext)
+        if modified:
+            token_dirpath = self.modified_token_output_dirpath
+        else:
+            token_dirpath = self.token_output_dirpath
+        booknlp_output = BookNLPOutput(token_dirpath, fandom_fname, json_output_dirpath=self.json_output_dirpath, fic_csv_dirpath=self.fic_csv_dirpath, token_file_ext=self.token_file_ext)
 
-        # Whatever you do, need to align with annotations
-        print("\tAligning with annotated fic...")
-        sys.stdout.flush()
-        booknlp_output.align_with_annotations()
+        if align:
+            print("\tAligning with annotated fic...")
+            sys.stdout.flush()
+            booknlp_output.align_with_annotations()
 
+        return booknlp_output
+
+    def evaluate_fic(self, fandom_fname):
+        booknlp_output = self.load_fic_output(fandom_fname)
         if self.whether_evaluate_coref:
             self.evaluate_coref(fandom_fname, booknlp_output)
-
         if self.whether_evaluate_quotes:
-            self.evaluate_quotes(fandom_fname, booknlp_output, exact_match=False)
+            if self.coref_from == 'gold':
+                if self.quotes_from == 'gold': # adjust token file to give near-perfect extraction
+                    booknlp_output.modify_quote_tokens(quote_annotations_dirpath=self.quote_annotations_dirpath, quote_annotations_ext=self.quote_annotations_ext, change_to='gold')
+                else:
+                    booknlp_output.modify_quote_tokens(change_to='strict')
+                booknlp_output.modify_coref_tokens(self.coref_annotations_dirpath, self.coref_annotations_ext)
+            if self.run_quote_attribution:
+                booknlp_output.run_booknlp_quote_attribution()
+            self.evaluate_quotes(fandom_fname, booknlp_output, exact_match=True)
 
 
 def main():
@@ -87,6 +112,9 @@ def main():
     evaluator = BookNLPEvaluator(token_output_dirpath, json_output_dirpath, fic_csv_dirpath,
         evaluate_coref=config.getboolean('Settings', 'evaluate_coref'), 
         evaluate_quotes=config.getboolean('Settings', 'evaluate_quotes'), 
+        coref_from=config.get('Settings', 'load_coref_from'), 
+        quotes_from=config.get('Settings', 'load_quotes_from'), 
+        run_quote_attribution=config.getboolean('Settings', 'run_quote_attribution'), 
         coref_annotations_dirpath = str(config.get('Filepaths', 'coref_annotations_dirpath')),
         quote_annotations_dirpath = str(config.get('Filepaths', 'quote_annotations_dirpath')),
         predicted_coref_outpath = str(config.get('Filepaths', 'predicted_coref_outpath')),

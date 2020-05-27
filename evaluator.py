@@ -9,6 +9,8 @@ class Evaluator():
     
     def __init__(self, fic_csv_dirpath,
                     evaluate_coref=False, evaluate_quotes=False,
+                    coref_from='pipeline', quotes_from='pipeline',
+                    run_quote_attribution=False,
                     coref_annotations_dirpath=None,
                     quote_annotations_dirpath=None,
                     predicted_coref_outpath=None,
@@ -19,6 +21,9 @@ class Evaluator():
         self.fic_csv_dirpath = fic_csv_dirpath
         self.whether_evaluate_coref = evaluate_coref
         self.whether_evaluate_quotes = evaluate_quotes
+        self.coref_from = coref_from
+        self.quotes_from = quotes_from
+        self.run_quote_attribution = run_quote_attribution
         self.coref_annotations_dirpath = coref_annotations_dirpath
         self.quote_annotations_dirpath = quote_annotations_dirpath
         self.predicted_coref_outpath = predicted_coref_outpath
@@ -42,7 +47,7 @@ class Evaluator():
         # Print scores
         scorer.print_coref_scores(fic_representation.character_mentions, gold.annotations, exact_match=True)
 
-    def evaluate_quotes(self, fandom_fname, fic_representation, save=True, exact_match=True):
+    def evaluate_quotes(self, fandom_fname, fic_representation, save=True, exact_match=True, coref_from='system', quotes_from='system'):
         """ Evaluate quotes for a fic. 
             Args:
                 save: save Quote objects in a pickled file in a tmp directory

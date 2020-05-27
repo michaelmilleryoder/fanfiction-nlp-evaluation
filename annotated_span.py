@@ -161,6 +161,21 @@ def group_annotations(spans):
     return clusters
 
 
+def group_annotations_para(spans):
+    """ Group annotations by (chap_id, para_id)
+        Returns dictionary of {(chap_id, para_id): [AnnotatedSpan, ...]}
+    """
+
+    clusters = {}
+    for span in spans:
+        key = (span.chap_id, span.para_id)
+        if not key in clusters:
+            clusters[key] = []
+        clusters[key].append(span)
+
+    return clusters
+
+
 def characters_match(char1, char2):
     """ Returns if 2 character names match closely enough.
         First splits character names into parts by underscores or spaces.

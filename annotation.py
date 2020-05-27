@@ -16,6 +16,7 @@ class Annotation(FicRepresentation):
     def __init__(self, annotations_dirpath, fandom_fname, file_ext='.csv', fic_csv_dirpath=None):
         super().__init__(fandom_fname, fic_csv_dirpath=fic_csv_dirpath)
         self.file_path = os.path.join(annotations_dirpath, f'{fandom_fname}{file_ext}')
+        self.annotations_set = set()
 
     def extract_annotated_spans(self):
         """ Load gold fic annotations, match text to mentions
@@ -27,6 +28,7 @@ class Annotation(FicRepresentation):
 
         df = pd.read_csv(self.file_path)
         for colname in df.columns:
+            self.annotations_set.add(colname)
             for mention in df[colname].dropna():
                 parts = mention.split('.')
                 chapter_id = int(parts[0])

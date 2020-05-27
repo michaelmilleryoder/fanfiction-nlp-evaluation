@@ -9,6 +9,7 @@ class FicRepresentation():
     def __init__(self, fandom_fname, fic_csv_dirpath=None):
 
         self.fandom_fname = fandom_fname
+        self.fic_csv_dirpath = fic_csv_dirpath
         if fic_csv_dirpath is not None:
             self.fic_csvpath = os.path.join(fic_csv_dirpath, f'{fandom_fname}.csv')
         self.fic_csv = None

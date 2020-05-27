@@ -11,6 +11,7 @@ class CharacterMentionParser(HTMLParser):
     def __init__(self):
         HTMLParser.__init__(self)
         self.character_mentions = [] # ordered list of AnnotatedSpan objects
+        self.text = ''
         self._current_token_id = 1 # starts with 1
         self._current_characters = [] # stack for holding current characters
         self._current_tokens = [] # stack for holding tokens in a mention
@@ -37,6 +38,7 @@ class CharacterMentionParser(HTMLParser):
         
     def handle_data(self, data):
         words = data.split()
+        self.text += data + ' '
         self._current_token_id += len(words)
         self._current_tokens.append(words)
         
