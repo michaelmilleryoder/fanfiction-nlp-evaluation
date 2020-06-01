@@ -172,39 +172,35 @@ def calculate_lea(predicted_mentions, gold_mentions):
     return f1, precision, recall
 
 
-def print_coref_scores(predicted_mentions, gold_mentions, exact_match=True):
-    """ Prints coref scores """
+def coref_scores(predicted_mentions, gold_mentions, exact_match=True):
+    """ Returns coref scores """
 
-    f1, precision, recall = calculate_lea(predicted_mentions, gold_mentions)
-
-    print('\tCoref results:')
-    print(f'\t\tLEA F-score: {f1: .2%}')
-    print(f'\t\tLEA Precision: {precision: .2%}')
-    print(f'\t\tLEA Recall: {recall: .2%}')
-    print()
+    scores = {}
+    scores['lea_f1'], scores['lea_precision'], scores['lea_recall'] = calculate_lea(predicted_mentions, gold_mentions)
+    return scores
 
 
-def print_quote_scores(predicted_quotes, gold_quotes, exact_match=True):
-    """ Prints quote extraction and attribution scores """
+def quote_scores(predicted_quotes, gold_quotes, exact_match=True):
+    """ Returns quote extraction and attribution scores """
+    scores = {}
 
     # Precision, recall of the quote extraction (the markables)
     matched_pred_quotes, matched_gold_quotes, false_positives, false_negatives = match_spans(predicted_quotes, gold_quotes, exact=exact_match)
     if len(predicted_quotes) == 0:
         if len(gold_quotes) == 0:
-            precision = 1
+            extraction_precision = 1
         else:
-            precision = 0
+            extraction_precision = 0
     else:
-        precision = min(len(matched_pred_quotes)/len(predicted_quotes), 1)
+        extraction_precision = min(len(matched_pred_quotes)/len(predicted_quotes), 1)
     if len(gold_quotes) == 0:
-        recall = 1 # everyone gets perfect recall if there are no quotes
+        extraction_recall = 1 # everyone gets perfect recall if there are no quotes
     else:
-        recall = len(matched_gold_quotes)/len(gold_quotes)
-    f1 = f_score(precision, recall)
-    print(f'\tExtraction results:')
-    print(f'\t\tF-score: {f1: .2%}')
-    print(f'\t\tPrecision: {precision: .2%} ({len(matched_pred_quotes)}/{len(predicted_quotes)})')
-    print(f'\t\tRecall: {recall: .2%} ({len(matched_gold_quotes)}/{len(gold_quotes)})')
+        extraction_recall = len(matched_gold_quotes)/len(gold_quotes)
+    extraction_f1 = f_score(extraction_precision, extraction_recall)
+    scores['extraction_f1'] = extraction_f1
+    scores['extraction_precision'] = extraction_precision
+    scores['extraction_recall'] = extraction_recall
 
     # Quote attribution accuracy on matched quotes
     correct_attributions, incorrect_attributions = match_annotated_spans(matched_pred_quotes, matched_gold_quotes, matched=True, incorrect_extractions=false_positives)
@@ -212,7 +208,6 @@ def print_quote_scores(predicted_quotes, gold_quotes, exact_match=True):
         attribution_accuracy_matched = 0
     else:
         attribution_accuracy_matched = len(correct_attributions)/len(matched_pred_quotes)
-    print(f'\tAttribution results:')
 
     # Quote attribution accuracy on all predicted quotes.
     # If the predicted quote is not a real quote span, is not a match
@@ -228,10 +223,10 @@ def print_quote_scores(predicted_quotes, gold_quotes, exact_match=True):
     else:
         attribution_recall = len(correct_attributions)/len(gold_quotes)
     attribution_f1 = f_score(attribution_precision, attribution_recall)
-    print(f'\t\tF-score: {attribution_f1: .2%}')
-    print(f'\t\tPrecision: {attribution_precision: .2%} ({len(correct_attributions)}/{len(predicted_quotes)})')
-    print(f'\t\tRecall: {attribution_recall: .2%} ({len(correct_attributions)}/{len(gold_quotes)})')
+    scores['attribution_f1'] = attribution_f1
+    scores['attribution_precision'] = attribution_precision
+    scores['attribution_recall'] = attribution_recall
 
-    print(f'\t\tAccuracy on matched quote spans: {attribution_accuracy_matched: .2%} ({len(correct_attributions)}/{len(matched_pred_quotes)})')
+    #print(f'\t\tAccuracy on matched quote spans: {attribution_accuracy_matched: .2%} ({len(correct_attributions)}/{len(matched_pred_quotes)})')
 
-    print()
+    return scores

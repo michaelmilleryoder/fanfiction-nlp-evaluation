@@ -4,6 +4,7 @@ import os
 import pickle
 import json
 import pandas as pd
+import re
 import pdb
 
 from fic_representation import FicRepresentation
@@ -27,12 +28,39 @@ def strip_mention_tags(text):
     return parser.text
 
 
+def strip_quotes(text):
+    """ Returns text with any quote marks replaced by underscores """
+    quote_marks = ['“', '``', '"', '«', '”', "''", '»']
+    new_toks = [tok if not tok in quote_marks else '_' for tok in text.split()]
+    return ' '.join(new_toks)
+
+
 def insert_mention_tags(text, mentions):
     """ Returns text without annotation tags inserted around corresponding tokens """
     tokens = text.split()
     for span in mentions:
+        if span.start_token_id - 1 >= len(tokens) or span.start_token_id - 1 < 0:
+            pdb.set_trace()
         tokens[span.start_token_id-1] = f'<character name="{span.annotation}">' + tokens[span.start_token_id-1]
         tokens[span.end_token_id-1] = tokens[span.end_token_id-1] + "</character>"
+    return ' '.join(tokens)
+
+
+def insert_quote_marks(text, mentions):
+    """ Returns text with readable quote marks around annotated spans """
+    tokens = text.split()
+    for span in mentions:
+        start_tok = tokens[span.start_token_id-1]
+        tokens[span.start_token_id-1] = '``'
+        #if re.search(r'[\w\.]', start_tok): # if has anything other than punctuation
+        #    tokens[span.start_token_id] = f'{start_tok}_{tokens[span.start_token_id]}'
+        #else:
+        #    tokens[span.start_token_id-1] = '``'
+        end_tok = tokens[span.end_token_id-1]
+        tokens[span.end_token_id-1] = "''"
+        #if re.search(r'[\w\.]', end_tok): # if has anything other than punctuation
+        #    tokens[span.end_token_id-2] = f'{tokens[span.end_token_id-2]}_{end_tok}'
+        #tokens[span.end_token_id-1] = "''"
     return ' '.join(tokens)
 
 
@@ -143,6 +171,48 @@ class PipelineOutput(FicRepresentation):
                 new_text_tokenized.append(text)
         self.coref_fic['text_tokenized'] = new_text_tokenized
 
+    def modify_quote_marks(self, annotations):
+        """ Modifies self.coref_fic with quote marks around gold quotes.
+            Args:
+                annotations: new quote spans
+        """
+
+        # Group annotations by (chap_id, para_id)        
+        grouped = group_annotations_para(annotations)
+        if not hasattr(self, 'coref_fic'):
+            self.load_coref_csv()
+        new_text_tokenized = []
+        for row in list(self.coref_fic.itertuples()):
+            # Strip any existing quotes (replace with underscores)
+            #text = strip_quotes(row.text_tokenized)            
+            text = row.text_tokenized
+            # Insert readable quote marks
+            if (row.chapter_id, row.para_id) in grouped:
+                new_text_tokenized.append(insert_quote_marks(text, grouped[(row.chapter_id, row.para_id)]))
+            else:
+                new_text_tokenized.append(text)
+        self.coref_fic['text_tokenized'] = new_text_tokenized
+
+    def modify_quote_spans(self, quote_annotations_dirpath, quote_annotations_ext):
+        """ Modifies quote marks so that the pipeline will recognized
+            gold quotes as quote spans """
+        # Load gold quote extractions
+        gold = Annotation(quote_annotations_dirpath, self.fandom_fname, file_ext=quote_annotations_ext, fic_csv_dirpath=self.fic_csv_dirpath)
+        gold.extract_annotated_spans()
+
+        # Modify CSV text_tokenized
+        self.modify_quote_marks(gold.annotations) # Modifies self.coref_csv
+
+        # Save out
+        modify_text = '_gold_quotes'
+        self.coref_output_dirpath = self.coref_output_dirpath.rstrip('/') + modify_text
+        self.save_coref_csv()
+
+        # Change characters file path, too
+        self.coref_chars_output_dirpath = self.coref_chars_output_dirpath.rstrip('/') + modify_text
+
+        return modify_text
+
     def modify_coref_files(self, coref_annotations_dirpath, coref_annotations_ext):
         """ Changes coref tokens to gold annotations in self.token_data.
             Saves out to {token_output_dirpath}_gold_coref/token_fpath
@@ -159,10 +229,10 @@ class PipelineOutput(FicRepresentation):
         # Save out
         modify_text = '_gold_coref'
         self.coref_output_dirpath = self.coref_output_dirpath.rstrip('/') + modify_text
-        self.coref_chars_output_dirpath = self.coref_chars_output_dirpath.rstrip('/') + modify_text
         self.save_coref_csv()
 
         # Modify coref characters file
+        self.coref_chars_output_dirpath = self.coref_chars_output_dirpath.rstrip('/') + modify_text
         self.save_characters_file()
         
         return modify_text

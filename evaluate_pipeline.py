@@ -35,6 +35,8 @@ class PipelineEvaluator(Evaluator):
                     run_quote_attribution=False,
                     coref_annotations_dirpath=None,
                     quote_annotations_dirpath=None,
+                    dataset_name=None,
+                    scores_outpath=None,
                     predicted_coref_outpath=None,
                     predicted_quotes_outpath=None):
 
@@ -46,6 +48,8 @@ class PipelineEvaluator(Evaluator):
                     predicted_quotes_outpath = predicted_quotes_outpath,
                     coref_from=coref_from,
                     quotes_from=quotes_from,
+                    dataset_name=dataset_name,
+                    scores_outpath=scores_outpath,
                     run_quote_attribution=run_quote_attribution)
 
         self.output_dirpath = output_dirpath
@@ -54,27 +58,46 @@ class PipelineEvaluator(Evaluator):
         self.quote_output_dirpath = os.path.join(output_dirpath, 'quote_attribution')
 
     def evaluate(self):
+        fic_scores = {'coref': [], 'quotes': []} 
+
         # Modify fics if need be
+        modified_suffix = ''
         if self.whether_evaluate_quotes and self.coref_from == 'gold':
             for fname in sorted(os.listdir(self.char_output_dirpath)):
                 fandom_fname = fname.split('.')[0]
+                modified_suffix = ''
                 pipeline_output = PipelineOutput(self.output_dirpath, fandom_fname, fic_csv_dirpath=self.fic_csv_dirpath)
-                modified_suffix = pipeline_output.modify_coref_files(self.coref_annotations_dirpath, self.coref_annotations_ext)
+                if self.quotes_from == 'gold': # TODO: doesn't work
+                    modified_suffix += pipeline_output.modify_quote_spans(self.quote_annotations_dirpath, self.quote_annotations_ext)
+                modified_suffix += pipeline_output.modify_coref_files(self.coref_annotations_dirpath, self.coref_annotations_ext)
     
-        modified_coref_output_dirpath = self.coref_output_dirpath.rstrip('/') + modified_suffix
-        modified_char_output_dirpath = self.char_output_dirpath.rstrip('/') + modified_suffix
-        modified_quote_output_dirpath = self.quote_output_dirpath.rstrip('/') + modified_suffix
-        if self.run_quote_attribution:
-            self.run_pipeline_quote_attribution(modified_coref_output_dirpath, modified_char_output_dirpath, modified_quote_output_dirpath)
+            modified_coref_output_dirpath = self.coref_output_dirpath.rstrip('/') + modified_suffix
+            modified_char_output_dirpath = self.char_output_dirpath.rstrip('/') + modified_suffix
+            modified_quote_output_dirpath = self.quote_output_dirpath.rstrip('/') + modified_suffix
+            if self.run_quote_attribution:
+                self.run_pipeline_quote_attribution(modified_coref_output_dirpath, modified_char_output_dirpath, modified_quote_output_dirpath)
 
         # Evaluate fics
         for fname in sorted(os.listdir(self.char_output_dirpath)):
             fandom_fname = fname.split('.')[0]
             print(fandom_fname)
             sys.stdout.flush()
-            self.evaluate_fic(fandom_fname, modified_suffix=modified_suffix)
+            coref_scores, quote_scores = self.evaluate_fic(fandom_fname, modified_suffix=modified_suffix)
+            if self.whether_evaluate_coref:
+                fic_scores['coref'].append(coref_scores)
+            if self.whether_evaluate_quotes:
+                fic_scores['quotes'].append(quote_scores)
+
+        # Save scores
+        if self.whether_evaluate_coref:
+            self.save_scores(fic_scores['coref'], 'pipeline', ['coref'])
+        if self.whether_evaluate_quotes:
+            self.save_scores(fic_scores['quotes'], 
+                'pipeline', ['quotes', f'{self.coref_from}_coref', f'{self.quotes_from}_quotes'])
 
     def evaluate_fic(self, fandom_fname, modified_suffix=''):
+        coref_scores, quote_scores = None, None
+
         print("\tLoading file...")
         sys.stdout.flush()
 
@@ -82,10 +105,13 @@ class PipelineEvaluator(Evaluator):
         pipeline_output = PipelineOutput(self.output_dirpath, fandom_fname, fic_csv_dirpath=self.fic_csv_dirpath, modified_suffix=modified_suffix)
 
         if self.whether_evaluate_coref:
-            self.evaluate_coref(fandom_fname, pipeline_output)
+            coref_scores = self.evaluate_coref(fandom_fname, pipeline_output)
 
         if self.whether_evaluate_quotes:
-            self.evaluate_quotes(fandom_fname, pipeline_output)
+            quote_scores = self.evaluate_quotes(fandom_fname, pipeline_output)
+            quote_scores['filename'] = fandom_fname
+
+        return coref_scores, quote_scores
 
     def run_pipeline_quote_attribution(self, coref_output_dirpath, coref_chars_output_dirpath, quote_output_dirpath):
         """ Runs pipeline quote attribution.
@@ -114,6 +140,8 @@ def main():
         coref_from=config.get('Settings', 'load_coref_from'), 
         quotes_from=config.get('Settings', 'load_quotes_from'), 
         run_quote_attribution=config.getboolean('Settings', 'run_quote_attribution'), 
+        dataset_name = config.get('Settings', 'dataset_name'),
+        scores_outpath = config.get('Filepaths', 'scores_outpath'),
         coref_annotations_dirpath = config.get('Filepaths', 'coref_annotations_dirpath'),
         quote_annotations_dirpath = config.get('Filepaths', 'quote_annotations_dirpath'),
         predicted_coref_outpath = config.get('Filepaths', 'predicted_coref_outpath'),

@@ -30,26 +30,98 @@ def modify_paragraph_id(para_id, trouble_line):
     return new_para_id
 
 
+def load_tokens_file(token_fpath):
+    """ Load a BookNLP tokens file, return a pandas DataFrame """ 
+    return pd.read_csv(token_fpath, sep='\t', quoting=csv.QUOTE_NONE)
+
+
+def save_tokens_file(token_data, token_fpath):
+    token_data.to_csv(token_fpath, sep='\t', quoting=csv.QUOTE_NONE, index=False)
+
+
+def token_matches(original_tok, whitespace_tok, quotes=False):
+    transformations = {')': '-RRB-', # whitespace_tok: original_tok
+                       '(': '-LRB-',
+                       '?-': '-',
+                        '…': '...',
+                      }
+    transformations_quotes = {**transformations, **{
+                       '"': "``",
+                       '“': "``",
+                       "'": "`",
+                       '"': "''",
+                       '”': "''",
+                      }}
+    if original_tok == whitespace_tok:
+        return True
+    if quotes:
+        if whitespace_tok in transformations_quotes and transformations_quotes[whitespace_tok] == original_tok:
+            return True
+        else:
+            return False
+    else:
+        if whitespace_tok in transformations and transformations[whitespace_tok] == original_tok:
+            return True
+        else:
+            return False
+
+def match_quotes(source, target):
+    """ Match quote styles in the source DataFrame to the target DataFrame.
+        Source assumed to be original tokenization, target is whitespace-tokenized.
+    """
+    new_tokens = []
+    offset = 0 # how many tokens whitespace appears to be off from original
+    desired_quote_chars = ['``', '`', "''", "'"]
+    quote_chars = ['“', '``', '"', '«', '”', "''", '"', '»', "'"]
+    for i in range(len(target)):
+        if i+offset >= len(source):
+            pdb.set_trace()
+        original_tok = source.loc[i+offset, 'normalizedWord']
+        whitespace_tok = target.loc[i, 'normalizedWord']
+        tok_to_add = whitespace_tok
+        
+        if not token_matches(original_tok, whitespace_tok, quotes=False):
+            if original_tok in quote_chars:
+                # Add the original quote token
+                tok_to_add = original_tok
+            else:
+                next_whitespace_tok = target.loc[i+1, 'normalizedWord']
+                # Find offset using the next non-quote character
+                for j in range(1,5):
+                    next_original_tok = source.loc[i+offset+j, 'normalizedWord']
+                    if token_matches(next_original_tok, next_whitespace_tok, quotes=True):
+                        offset += j-1
+                        break
+                else:
+                    pdb.set_trace()
+        new_tokens.append(tok_to_add)
+        
+    assert len(new_tokens) == len(target)
+    target['normalizedWord'] = new_tokens
+    target['lemma'] = new_tokens
+    return target
+
+
 class BookNLPOutput(FicRepresentation):
     """ Holds representation for the BookNLP processed output of a fic. """
 
-    def __init__(self, token_output_dirpath, fandom_fname, json_output_dirpath=None, fic_csv_dirpath=None, token_file_ext='.tokens'): 
+    def __init__(self, token_output_dirpath, fandom_fname, json_output_dirpath=None, fic_csv_dirpath=None, token_file_ext='.tokens', original_tokenization_dirpath=None): 
         """ 
         Args:
             csv_dirpath: path to directory with corresponding original fic CSV
             token_file_ext: file extension after fandom_fname for token output files
-        
         """
         super().__init__(fandom_fname, fic_csv_dirpath=fic_csv_dirpath)
         self.original_token_output_dirpath = token_output_dirpath
         self.modified_token_output_dirpath = token_output_dirpath
         self.original_token_fpath = os.path.join(token_output_dirpath, f'{fandom_fname}{token_file_ext}')
         self.modified_token_fpath = self.original_token_fpath
-        self.original_token_data = pd.read_csv(self.original_token_fpath, sep='\t', quoting=csv.QUOTE_NONE)
+        self.original_token_data = load_tokens_file(self.original_token_fpath)
         self.token_data = self.original_token_data.copy()
         self.original_json_dirpath = json_output_dirpath
         self.modified_json_dirpath = json_output_dirpath
         self.token_file_ext = token_file_ext
+        self.original_tokenization_dirpath = original_tokenization_dirpath
 
     def load_json_output(self):
         json_fpath = os.path.join(self.modified_json_dirpath, self.fandom_fname, 'book.id.book')
@@ -70,7 +142,6 @@ class BookNLPOutput(FicRepresentation):
         # Compare number of paragraphs
         n_diff = self.check_paragraph_breaks()
         if n_diff != 0:
-            pdb.set_trace() # shouldn't be any difference after whitespace tokenization
             self.fix_paragraph_breaks(n_diff)
 
         print("\tChecking/fixing token alignment...")
@@ -78,12 +149,11 @@ class BookNLPOutput(FicRepresentation):
         ## Make sure token IDs align
         misaligned_rows = self.get_misaligned_paragraph()
         if len(misaligned_rows) > 0:
-            pdb.set_trace() # shouldn't be any difference after whitespace tokenization
             #print(f"\tFound {len(misaligned_rows)} misaligned rows")
             self.fix_token_misalignment(misaligned_rows)
 
         ## Renumber BookNLP token IDs
-        self.renumber_token_ids()
+        self.get_paragraph_token_ids()
 
     def check_paragraph_breaks(self):
         """ Checks for the same number of paragraphs between BookNLP output and annotations. """
@@ -162,16 +232,28 @@ class BookNLPOutput(FicRepresentation):
 
             total_offset = 0
             trouble_offsets = {} # line_number: offset
+            #modify_words = {} # index: new word
+            #remove_words = {} # indices
             first_tokenId = self.token_data.loc[(self.token_data['chapterId']==selected_chap_id) & (self.token_data['modified_paragraphId']==selected_para_id), 'tokenId'].tolist()[0]
+
+#            if selected_para_id == 29:
+#                pdb.set_trace()
 
             for i, gold_tok in enumerate(gold_tokens):
 
                 current_booknlp_token = booknlp_tokens[i + total_offset]
                 if not gold_tok == current_booknlp_token:
+        
+                    # Try detecting an ellipsis
+            #        if len(current_booknlp_token) > 1 and current_booknlp_token.endswith('.') and len(booknlp_tokens) < i+total_offset+2 and booknlp_tokens[i + total_offset + 1] == '.' and booknlp_tokens[i + total_offset + 2] == '.':
+            #            total_offset += 2
+            #            continue
 
                     # Try adding tokens
                     added = current_booknlp_token
                     for offset in range(1, 4):
+                        if i + total_offset + offset >= len(booknlp_tokens):
+                            break
                         added += booknlp_tokens[i + total_offset + offset]
                         if added == gold_tok:
                             total_offset += offset
@@ -202,10 +284,17 @@ class BookNLPOutput(FicRepresentation):
         if len(misaligned_rows) > 0:
             pdb.set_trace()
 
-    def renumber_token_ids(self):
+    def get_paragraph_token_ids(self):
         para_token_lengths = self.token_data.groupby('full_paragraphId').size().tolist()
         new_tokenIds = sum([list(range(1, para_length+1)) for para_length in para_token_lengths], [])
         self.token_data['modified_tokenId'] = new_tokenIds
+
+    def renumber_token_ids(self):
+
+        if max(self.token_data['tokenId']) == len(self.token_data):
+            return
+
+        self.token_data['tokenId'] = range(len(self.token_data))
 
     def extract_bio_quotes(self):
         """ Extracts Quote objects (unattributed) from BookNLP output token data.
@@ -354,12 +443,13 @@ class BookNLPOutput(FicRepresentation):
         if save_dirpath is not None:
             self.pickle_output(save_dirpath, self.quotes)
 
-    def modify_quote_tokens(self, quote_annotations_dirpath=None, quote_annotations_ext=None, change_to='gold'):
-        """ Changes quote tokens to gold quote extractions so BookNLP will recognize them.
+    def modify_quote_tokens(self, original_tokenization_dirpath=None, quote_annotations_dirpath=None, quote_annotations_ext=None, change_to='gold'):
+        """ Changes quote tokens so BookNLP will recognize them in certain ways.
             Args:
                 change_to:
                     'gold': Change to gold quote extractions
-                    'strict': Only change existing BookNLP quotes before I changed to whitespace tokenization. That is, single quotes to ` and ', double quotes to `` and ''
+                    'match': Replace quotes with smart quotes to match a tokens file done without whitespace tokenization
+                    'strict': Change existing BookNLP quotes using a dictionary. Single quotes to ` and ', double quotes to `` and ''
         """
         if change_to == 'gold':
             # Load gold quote extractions
@@ -372,10 +462,14 @@ class BookNLPOutput(FicRepresentation):
             
             # Save out
             self.modified_token_output_dirpath = self.modified_token_output_dirpath.rstrip('/') + '_gold_quotes'
-            if not os.path.exists(self.modified_token_output_dirpath):
-                os.mkdir(self.modified_token_output_dirpath)
-            self.modified_token_fpath = os.path.join(self.modified_token_output_dirpath, f'{self.fandom_fname}{self.token_file_ext}')
             self.token_data.to_csv(self.modified_token_fpath, sep='\t', quoting=csv.QUOTE_NONE, index=False)
+
+        elif change_to == 'match':
+            original_tokens = load_tokens_file(os.path.join(self.original_tokenization_dirpath, self.fandom_fname + self.token_file_ext))
+            self.token_data = match_quotes(original_tokens, self.token_data)
+
+            # Save out
+            save_tokens_file(self.token_data, self.modified_token_fpath)
 
         elif change_to == 'strict':
             quote_changes = {
@@ -384,6 +478,10 @@ class BookNLPOutput(FicRepresentation):
             }
             self.token_data['normalizedWord'] = self.token_data['normalizedWord'].map(lambda x: quote_changes.get(x, x))
             self.token_data['lemma'] = self.token_data['lemma'].map(lambda x: quote_changes.get(x, x))
+
+            # Save out
+            pdb.set_trace()
+            self.token_data.to_csv(self.modified_token_fpath, sep='\t', quoting=csv.QUOTE_NONE, index=False)
 
     def modify_coref_tokens(self, coref_annotations_dirpath, coref_annotations_ext):
         """ Changes coref tokens to gold annotations in self.token_data.
@@ -403,6 +501,9 @@ class BookNLPOutput(FicRepresentation):
         # Modify original tokens file
         for span in gold.annotations:
             self.modify_coref_span(span)
+
+        # Renumber BookNLP's own token IDs for re-running on modified output
+        self.renumber_token_ids()
         
         # Save out
         self.modified_token_output_dirpath = self.modified_token_output_dirpath.rstrip('/') + '_gold_coref'

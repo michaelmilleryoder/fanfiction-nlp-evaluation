@@ -18,6 +18,8 @@ class CharacterMentionParser(HTMLParser):
         self._start_token_ids = [] # stack for holding tag start token IDs
     
     def handle_starttag(self, tag, attrs):
+        if len(attrs) == 0 or len(attrs[0]) < 2:
+            pdb.set_trace()
         self._current_characters.append(attrs[0][1])
         self._start_token_ids.append(self._current_token_id)
         
