@@ -74,6 +74,8 @@ class BookNLPEvaluator(Evaluator):
         if self.whether_evaluate_coref:
             self.save_scores(fic_scores['coref'], 'booknlp', ['coref'])
         if self.whether_evaluate_quotes:
+            attribution_f1_scores = [scores['attribution_f1'] for scores in fic_scores['quotes']]
+            print(f"Average attibution F1: {np.mean(attribution_f1_scores): .2%}")
             self.save_scores(fic_scores['quotes'], 
                 'booknlp', ['quotes', f'{self.coref_from}_coref', f'{self.quotes_from}_quotes'])
 
@@ -139,7 +141,7 @@ def main():
     json_output_dirpath = str(config.get('Filepaths', 'json_output_dirpath'))
     fic_csv_dirpath = str(config.get('Filepaths', 'fic_csv_dirpath'))
 
-    replace_quotes = config.getboolean('Settings', 'replace_quotes'), 
+    replace_quotes = config.getboolean('Settings', 'replace_quotes')
     original_tokenization_dirpath = None
     if replace_quotes:
        original_tokenization_dirpath = config.get('Filepaths', 'original_tokenized_output_dirpath')

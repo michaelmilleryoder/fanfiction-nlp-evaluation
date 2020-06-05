@@ -92,6 +92,8 @@ class PipelineEvaluator(Evaluator):
         if self.whether_evaluate_coref:
             self.save_scores(fic_scores['coref'], 'pipeline', ['coref'])
         if self.whether_evaluate_quotes:
+            attribution_f1_scores = [scores['attribution_f1'] for scores in fic_scores['quotes']]
+            print(f"Average attibution F1: {np.mean(attribution_f1_scores): .2%}")
             self.save_scores(fic_scores['quotes'], 
                 'pipeline', ['quotes', f'{self.coref_from}_coref', f'{self.quotes_from}_quotes'])
 

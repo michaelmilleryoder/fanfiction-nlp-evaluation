@@ -177,7 +177,7 @@ def group_annotations_para(spans):
 
 
 def characters_match(char1, char2):
-    """ Returns if 2 character names match closely enough.
+    """ Returns True if 2 character names match closely enough.
         First splits character names into parts by underscores or spaces.
         Matches either if:
             * Any part matches and either name has only 1 part (Potter and Harry Potter, e.g.)
@@ -186,10 +186,16 @@ def characters_match(char1, char2):
     
     #predicted_char_parts = predicted_char.lower().split('_')
     #gold_char_parts = [re.sub(r'[\(\)]', '', part) for part in gold_char.lower().split(' ')]
+    honorifics = ['ms.', 'ms',
+                    'mr.', 'mr',
+                    'mrs.', 'mrs',
+                    'uncle', 'aunt',
+                    'dear', 'sir', "ma'am"
+                ]
     char1_processed = re.sub(r'[\(\),]', '', char1)
-    char1_parts = re.split(r'[ _]', char1_processed.lower())
+    char1_parts = [part for part in re.split(r'[ _]', char1_processed.lower()) if not part in honorifics] 
     char2_processed = re.sub(r'[\(\),]', '', char2)
-    char2_parts = re.split(r'[ _]', char2_processed.lower())
+    char2_parts = [part for part in re.split(r'[ _]', char2_processed.lower()) if not part in honorifics]
     
     # Count number of part matches
     n_parts_match = 0

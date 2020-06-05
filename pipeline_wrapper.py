@@ -20,6 +20,9 @@ class PipelineWrapper():
                     '--story-path', self.coref_stories_dirpath,
                     '--char-path', self.coref_chars_dirpath,
                     '--output-path', self.quote_dirpath,
-                    '--features', 'spkappcnt', 'nameinuttr', 'neighboring', 'disttoutter', 'spkcntpar',
+                    #'--features', 'disttoutter', 'spkappcnt', 'nameinuttr', 'spkcntpar', 'neighboring',
+                    '--features', 'disttoutter', 'spkappcnt', 'nameinuttr', 'spkcntpar',
+                    #'--features', 'disttoutter', 'spkappcnt', 'nameinuttr',
+                    '--model-path', 'austen_4.model',
                     '--svmrank', '/usr0/home/mamille2/svm_rank']
             call(cmd)

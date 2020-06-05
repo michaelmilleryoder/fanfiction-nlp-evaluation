@@ -44,6 +44,10 @@ def token_matches(original_tok, whitespace_tok, quotes=False):
                        '(': '-LRB-',
                        '?-': '-',
                         '…': '...',
+                        '—': '--',
+                        '—And': 'And',
+                        'name—': 'name',
+                        'make—': 'make',
                       }
     transformations_quotes = {**transformations, **{
                        '"': "``",
