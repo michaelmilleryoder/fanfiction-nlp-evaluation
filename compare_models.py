@@ -1,5 +1,8 @@
 """ Compare models on character coreference, quote attribution.
-    Does a significance test """
+    Loads predictions from those saved out after running 
+    evaluate_{pipeline,booknlp}.py.
+    Does a significance test 
+"""
 
 import os
 from configparser import ConfigParser

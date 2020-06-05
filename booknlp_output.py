@@ -460,7 +460,10 @@ class BookNLPOutput(FicRepresentation):
             gold = Annotation(quote_annotations_dirpath, self.fandom_fname, file_ext=quote_annotations_ext, fic_csv_dirpath=self.fic_csv_dirpath)
             gold.extract_annotated_spans()
 
-            # Modify original tokens file; already doesn't have recognizable quotes with whitespace tokenization
+            # Clear existing quotes, since might have been modified after whitespace tokenization
+            self.clear_quotes()
+
+            # Add gold quote spans in
             for span in gold.annotations:
                 self.add_quote_span(span)
             
@@ -521,6 +524,19 @@ class BookNLPOutput(FicRepresentation):
         """ Modify token data to match gold span """
         for i in range(span.start_token_id, span.end_token_id + 1):
             self.token_data.loc[(self.token_data['chapterId']==span.chap_id) & (self.token_data['modified_paragraphId']==span.para_id) & (self.token_data['modified_tokenId']==i), 'characterId'] = self.char_name2id[span.annotation]
+
+    def clear_quotes(self):
+        """ Clear quote marks that are recognized by BookNLP into smart quotes,
+            not recognized 
+        """
+        transformations = {
+            "``": '“',
+            "''": '”',
+            "`": "'",
+        }
+
+        for colname in ['normalizedWord', 'lemma']:
+            self.token_data[colname] = self.token_data[colname].map(lambda x: transformations.get(x, x))
 
     def add_quote_span(self, span):
         """ Add quote marks so that BookNLP recognizes a span in self.token_data"""

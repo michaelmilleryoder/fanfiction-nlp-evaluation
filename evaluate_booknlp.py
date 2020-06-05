@@ -72,6 +72,8 @@ class BookNLPEvaluator(Evaluator):
                 fic_scores['quotes'].append(quote_scores)
 
         if self.whether_evaluate_coref:
+            f1_scores = [scores['lea_f1'] for scores in fic_scores['coref']]
+            print(f"Average LEA F1: {np.mean(f1_scores): .2%}")
             self.save_scores(fic_scores['coref'], 'booknlp', ['coref'])
         if self.whether_evaluate_quotes:
             attribution_f1_scores = [scores['attribution_f1'] for scores in fic_scores['quotes']]
