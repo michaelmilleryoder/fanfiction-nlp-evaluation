@@ -59,6 +59,7 @@ class PipelineEvaluator(Evaluator):
 
     def evaluate(self):
         fic_scores = {'coref': [], 'quotes': []} 
+        quote_groups = {}
 
         # Modify fics if need be
         modified_suffix = ''
@@ -82,25 +83,36 @@ class PipelineEvaluator(Evaluator):
             fandom_fname = fname.split('.')[0]
             print(fandom_fname)
             sys.stdout.flush()
-            coref_scores, quote_scores = self.evaluate_fic(fandom_fname, modified_suffix=modified_suffix)
+            coref_scores, quote_scores, quote_groups = self.evaluate_fic(fandom_fname, modified_suffix=modified_suffix)
             if self.whether_evaluate_coref:
                 fic_scores['coref'].append(coref_scores)
             if self.whether_evaluate_quotes:
                 fic_scores['quotes'].append(quote_scores)
+                for group, values in quote_groups.items():
+                    if isinstance(values, tuple): pdb.set_trace()
+                    quote_groups[group].extend(values)
 
-        # Save scores
+        # Calculate corpus-wide stats, save scores
         if self.whether_evaluate_coref:
             self.save_scores(fic_scores['coref'], 'pipeline', ['coref'])
             f1_scores = [scores['lea_f1'] for scores in fic_scores['coref']]
             print(f"Average LEA F1: {np.mean(f1_scores): .2%}")
+
         if self.whether_evaluate_quotes:
             attribution_f1_scores = [scores['attribution_f1'] for scores in fic_scores['quotes']]
             print(f"Average attibution F1: {np.mean(attribution_f1_scores): .2%}")
+
+            aggregate_quote_scores = {}
+            aggregate_quote_scores['extraction_f1'], aggregate_quote_scores['extraction_precision'], aggregate_quote_scores['extraction_recall'] = scorer.quote_extraction_scores(quote_groups['predicted_quotes'], quote_groups['gold_quotes'], quote_groups['matched_pred_quotes'], quote_groups['matched_gold_quotes'], quote_groups['false_positives'], quote_groups['false_negatives'])
+            aggregate_quote_scores['attribution_f1'], aggregate_quote_scores['attribution_precision'], aggregate_quote_scores['attribution_recall'] = scorer.quote_attribution_scores(quote_groups['predicted_quotes'], quote_groups['gold_quotes'], quote_groups['correct_attributions'], quote_groups['incorrect_attributions'])
+            for measure, val in sorted(aggregate_quote_scores.items()):
+                print(f"Overall {measure}: {val}")
+
             self.save_scores(fic_scores['quotes'], 
                 'pipeline', ['quotes', f'{self.coref_from}_coref', f'{self.quotes_from}_quotes'])
 
     def evaluate_fic(self, fandom_fname, modified_suffix=''):
-        coref_scores, quote_scores = None, None
+        coref_scores, quote_scores, quote_groups = None, None, None
 
         print("\tLoading file...")
         sys.stdout.flush()
@@ -112,10 +124,10 @@ class PipelineEvaluator(Evaluator):
             coref_scores = self.evaluate_coref(fandom_fname, pipeline_output)
 
         if self.whether_evaluate_quotes:
-            quote_scores = self.evaluate_quotes(fandom_fname, pipeline_output)
+            quote_scores, quote_groups = self.evaluate_quotes(fandom_fname, pipeline_output)
             quote_scores['filename'] = fandom_fname
 
-        return coref_scores, quote_scores
+        return coref_scores, quote_scores, quote_groups
 
     def run_pipeline_quote_attribution(self, coref_output_dirpath, coref_chars_output_dirpath, quote_output_dirpath):
         """ Runs pipeline quote attribution.

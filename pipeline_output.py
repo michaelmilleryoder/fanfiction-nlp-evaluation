@@ -99,7 +99,7 @@ class PipelineOutput(FicRepresentation):
         #print(f"Wrote gold coref csv file to {outpath}")
         self.coref_fic.to_csv(outpath, index=False)
 
-    def extract_quotes(self, save_dirpath=None):
+    def extract_quotes(self, save_dirpath=None, coref_from='system'):
         """ Extracts quotes into AnnotatedSpan objects, saves in self.quotes, also in tmp directory if specified.
         """
 

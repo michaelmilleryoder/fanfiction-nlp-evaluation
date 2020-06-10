@@ -59,7 +59,7 @@ class Evaluator():
         print()
         return coref_scores
 
-    def evaluate_quotes(self, fandom_fname, fic_representation, save=True, exact_match=True, coref_from='system', quotes_from='system'):
+    def evaluate_quotes(self, fandom_fname, fic_representation, save=True, exact_match=True):
         """ Evaluate quotes for a fic. 
             Args:
                 save: save AnnotatedSpan quote objects in a pickled file in a tmp directory
@@ -70,10 +70,10 @@ class Evaluator():
         gold.extract_annotated_spans()
 
         # Load predicted quote spans (from BookNLP output to AnnotatedSpan objects)
-        fic_representation.extract_quotes(save_dirpath=self.predicted_quotes_outpath)
+        fic_representation.extract_quotes(save_dirpath=self.predicted_quotes_outpath, coref_from=self.coref_from)
 
         # Get scores
-        quote_scores = scorer.quote_scores(fic_representation.quotes, gold.annotations, exact_match=exact_match)
+        quote_scores, quote_groups = scorer.quote_scores(fic_representation.quotes, gold.annotations, exact_match=exact_match)
         print('\tQuote extraction results:')
         for key in ['extraction_f1', 'extraction_precision', 'extraction_recall']:
             print(f'\t\t{key}: {quote_scores[key]: .2%}')
@@ -81,7 +81,7 @@ class Evaluator():
         for key in ['attribution_f1', 'attribution_precision', 'attribution_recall']:
             print(f'\t\t{key}: {quote_scores[key]: .2%}')
         print()
-        return quote_scores
+        return quote_scores, quote_groups
 
     def save_scores(self, scores, system_name, params):
         """ Save scores to a CSV in self.output_dirpath

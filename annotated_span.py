@@ -31,7 +31,7 @@ def match_spans(predicted_spans, gold_spans, exact=True):
     false_positives = [predicted for predicted in predicted_spans if not predicted in matched_predicted]
     false_negatives = [gold for gold in gold_spans if not gold in matched_gold]
 
-    return matched_predicted, matched_gold, false_positives, false_negatives
+    return list(matched_predicted), list(matched_gold), false_positives, false_negatives
 
 
 def match_annotated_spans(predicted_spans, gold_spans, matched=False, incorrect_extractions=[]):

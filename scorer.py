@@ -180,53 +180,65 @@ def coref_scores(predicted_mentions, gold_mentions, exact_match=True):
     return scores
 
 
+def quote_extraction_scores(predicted_quotes, gold_quotes, matched_pred_quotes, matched_gold_quotes, false_positives, false_negatives):
+    extraction_precision = min(len(matched_pred_quotes)/len(predicted_quotes), 1)
+    extraction_recall = len(matched_gold_quotes)/len(gold_quotes)
+    extraction_f1 = f_score(extraction_precision, extraction_recall)
+
+    return extraction_f1, extraction_precision, extraction_recall 
+
+
+def quote_attribution_scores(predicted_quotes, gold_quotes, correct_attributions, incorrect_attributions):
+    # Quote attribution accuracy on all predicted quotes.
+    # If the predicted quote is not a real quote span, is not a match
+    attribution_precision = len(correct_attributions)/len(predicted_quotes)
+    attribution_recall = len(correct_attributions)/len(gold_quotes)
+    attribution_f1 = f_score(attribution_precision, attribution_recall)
+
+    return attribution_f1, attribution_precision, attribution_recall
+
+
 def quote_scores(predicted_quotes, gold_quotes, exact_match=True):
     """ Returns quote extraction and attribution scores """
     scores = {}
 
-    # Precision, recall of the quote extraction (the markables)
-    matched_pred_quotes, matched_gold_quotes, false_positives, false_negatives = match_spans(predicted_quotes, gold_quotes, exact=exact_match)
-    if len(predicted_quotes) == 0:
+    # Edge cases
+    if len(predicted_quotes) == 0 or len(gold_quotes) == 0:
+        matched_pred_quotes, matched_gold_quotes, false_positives, false_negatives, correct_attributions, incorrect_attributions = [], [], [], [], [], []
+        if len(predicted_quotes) == 0:
+            if len(gold_quotes) == 0:
+                scores['extraction_precision'] = 1
+                scores['attribution_precision'] = 1
+            else:
+                scores['extraction_precision'] = 0
+                scores['attribution_precision'] = 0
         if len(gold_quotes) == 0:
-            extraction_precision = 1
+            scores['extraction_recall'] = 1 # everyone gets perfect recall if there are no quotes
+            scores['attribution_recall'] = 1 # everyone gets perfect recall if there are no quotes
         else:
-            extraction_precision = 0
-    else:
-        extraction_precision = min(len(matched_pred_quotes)/len(predicted_quotes), 1)
-    if len(gold_quotes) == 0:
-        extraction_recall = 1 # everyone gets perfect recall if there are no quotes
-    else:
-        extraction_recall = len(matched_gold_quotes)/len(gold_quotes)
-    extraction_f1 = f_score(extraction_precision, extraction_recall)
-    scores['extraction_f1'] = extraction_f1
-    scores['extraction_precision'] = extraction_precision
-    scores['extraction_recall'] = extraction_recall
+            scores['extraction_recall'] = 0
+            scores['attribution_recall'] = 0
+        scores['extraction_f1'] = f_score(scores['extraction_precision'], scores['extraction_recall'])
+        scores['attribution_f1'] = f_score(scores['attribution_precision'], scores['attribution_recall'])
 
-    # Quote attribution accuracy on matched quotes
-    correct_attributions, incorrect_attributions = match_annotated_spans(matched_pred_quotes, matched_gold_quotes, matched=True, incorrect_extractions=false_positives)
-    if len(matched_pred_quotes) == 0:
-        attribution_accuracy_matched = 0
     else:
-        attribution_accuracy_matched = len(correct_attributions)/len(matched_pred_quotes)
+        # Precision, recall of the quote extraction (the markables)
+        matched_pred_quotes, matched_gold_quotes, false_positives, false_negatives = match_spans(predicted_quotes, gold_quotes, exact=exact_match)
+        scores['extraction_f1'], scores['extraction_precision'], scores['extraction_recall'] = quote_extraction_scores(predicted_quotes, gold_quotes, matched_pred_quotes, matched_gold_quotes, false_positives, false_negatives)
 
-    # Quote attribution accuracy on all predicted quotes.
-    # If the predicted quote is not a real quote span, is not a match
-    if len(predicted_quotes) == 0:
-        if len(gold_quotes) == 0:
-            attribution_precision = 1
-        else:
-            attribution_precision = 0
-    else:
-        attribution_precision = len(correct_attributions)/len(predicted_quotes)
-    if len(gold_quotes) == 0:
-        attribution_recall = 1 # everyone gets perfect recall if no quotes
-    else:
-        attribution_recall = len(correct_attributions)/len(gold_quotes)
-    attribution_f1 = f_score(attribution_precision, attribution_recall)
-    scores['attribution_f1'] = attribution_f1
-    scores['attribution_precision'] = attribution_precision
-    scores['attribution_recall'] = attribution_recall
+        # Quote attribution precision, recall, f1
+        correct_attributions, incorrect_attributions = match_annotated_spans(matched_pred_quotes, matched_gold_quotes, matched=True, incorrect_extractions=false_positives)
+        scores['attribution_f1'], scores['attribution_precision'], scores['attribution_recall'] = quote_attribution_scores(predicted_quotes, gold_quotes, correct_attributions, incorrect_attributions)
+        #pdb.set_trace()
 
-    #print(f'\t\tAccuracy on matched quote spans: {attribution_accuracy_matched: .2%} ({len(correct_attributions)}/{len(matched_pred_quotes)})')
+    groups = {}
+    groups['predicted_quotes'] = predicted_quotes
+    groups['gold_quotes'] = gold_quotes
+    groups['matched_pred_quotes'] = matched_pred_quotes
+    groups['matched_gold_quotes'] = matched_gold_quotes
+    groups['false_positives'] = false_positives
+    groups['false_negatives'] = false_negatives
+    groups['correct_attributions'] = correct_attributions
+    groups['incorrect_attributions'] = incorrect_attributions
 
-    return scores
+    return scores, groups

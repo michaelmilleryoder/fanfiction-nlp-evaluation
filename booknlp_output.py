@@ -400,9 +400,13 @@ class BookNLPOutput(FicRepresentation):
         if save_dirpath:
             self.pickle_output(save_dirpath, self.character_mentions)
 
-    def extract_quotes(self, save_dirpath=None):
+    def extract_quotes(self, save_dirpath=None, coref_from='system'):
         """ Extract AnnotatedSpan objects from BookNLP output representations. 
             Saves to self.quotes
+            Args:
+                save_dirpath: where to save the extracted quotes, pickled
+                gold_coref: whether to apply some fixes to character names to match
+                    annotated gold names
         """
 
         self.quotes = []
@@ -410,11 +414,22 @@ class BookNLPOutput(FicRepresentation):
         # Load BookNLP JSON
         self.load_json_output()
 
+        # Fixes for character names to match gold (kind of a hack)
+        if coref_from == 'gold':
+            name_transform = {
+                    'Bilbo': 'Male Bilbo',
+                    'Thorin': 'Male Thorin',
+                    'Gandalf': 'Male Gandalf',
+                    'me': 'Clara',
+                }
+
         # Get AnnotatedSpan objects from all characters from BookNLP JSON
         for char in self.json_data['characters']:
             if len(char['names']) == 0:
                 pdb.set_trace()
             char_name = char['names'][0]['n'] # take first name as name
+            if coref_from == 'gold':
+                char_name = name_transform.get(char_name, char_name)
             for utterance in char['speaking']:
                 text = utterance['w']
                 quote_length = len(text.split())
@@ -467,9 +482,8 @@ class BookNLPOutput(FicRepresentation):
             for span in gold.annotations:
                 self.add_quote_span(span)
             
-            # Save out
+            # Change output dirpath for later saving (after replace gold coref)
             self.modified_token_output_dirpath = self.modified_token_output_dirpath.rstrip('/') + '_gold_quotes'
-            self.token_data.to_csv(self.modified_token_fpath, sep='\t', quoting=csv.QUOTE_NONE, index=False)
 
         elif change_to == 'match':
             original_tokens = load_tokens_file(os.path.join(self.original_tokenization_dirpath, self.fandom_fname + self.token_file_ext))
@@ -498,7 +512,7 @@ class BookNLPOutput(FicRepresentation):
         gold = Annotation(coref_annotations_dirpath, self.fandom_fname, file_ext=coref_annotations_ext, fic_csv_dirpath=self.fic_csv_dirpath)
         gold.extract_annotated_spans()
 
-        # Build character name to id dictionary
+        # Build character name to id dictionary for gold characters (arbitrary)
         self.char_name2id = defaultdict(lambda: len(self.char_name2id))
         #self.char_name2id = {charname: len(self.char_name2id) for charname in sorted(gold.annotations_set)}
 

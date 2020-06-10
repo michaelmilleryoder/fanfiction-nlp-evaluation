@@ -23,6 +23,7 @@ class PipelineWrapper():
                     #'--features', 'disttoutter', 'spkappcnt', 'nameinuttr', 'spkcntpar', 'neighboring',
                     '--features', 'disttoutter', 'spkappcnt', 'nameinuttr', 'spkcntpar',
                     #'--features', 'disttoutter', 'spkappcnt', 'nameinuttr',
-                    '--model-path', 'austen_4.model',
+                    #'--model-path', 'austen_4.model',
+                    '--model-path', 'models/austen_5features_c50.model',
                     '--svmrank', '/usr0/home/mamille2/svm_rank']
             call(cmd)
