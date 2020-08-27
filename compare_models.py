@@ -15,7 +15,7 @@ from annotation import Annotation
 from pipeline_output import PipelineOutput
 from booknlp_output import BookNLPOutput
 import evaluation_utils as utils
-from annotated_span import characters_match
+from annotated_span import characters_match, spans_union
 
 
 class ModelComparer():
@@ -92,20 +92,39 @@ class ModelComparer():
             gold_quotes, baseline_quotes, experimental_quotes = self.load_fic_spans(fandom_fname, self.quote_annotations_dirpath, self.baseline_quotes_dirpath, self.experimental_quotes_dirpath, self.quote_annotations_ext)
 
             # Build list of annotated spans, 'null' if don't extract the span
-            self.build_ordered_predictions(gold_quotes, baseline_quotes, experimental_quotes, span_type='quotes')
+            self.build_ordered_predictions(gold_quotes, baseline_quotes, experimental_quotes, over='all', span_type='quotes')
 
-    def build_ordered_predictions(self, gold_spans, baseline_spans, experimental_spans, span_type='coref'):
-        """ Build ordered predictions for quotes or coref, append to self.ordered_quote_predictions """
-        for span in gold_spans:
-            self.ordered_predictions[span_type]['gold'].append(span)
+    def build_ordered_predictions(self, gold_spans, baseline_spans, experimental_spans, over='all', span_type='coref'):
+        """ Build ordered predictions for quotes or coref, append to self.ordered_quote_predictions.
+            Args:
+                over: What set of annotations each instance is drawn from, {'all', 'gold'}. All is the union of all quotes extracted by any system, in which case the gold prediction is NULL for the speaker
+                span_type: {'coref', 'quotes'} just to identify in the output data structure
+        """
+        if over == 'gold':
+            spans = gold_spans
+        elif over == 'all':
+            spans = spans_union([gold_spans, baseline_spans, experimental_spans], attribution_conflicts='ignore')
 
-            matching_baseline = [baseline_span for baseline_span in baseline_spans if span.span_matches(baseline_span, exact=False)]
+        for span in spans:
+            # Gold classification
+            if over == 'gold':
+                self.ordered_predictions[span_type]['gold'].append(span)
+            elif over == 'all':
+                matching_gold = [gold_span for gold_span in gold_spans if span.span_matches(gold_span, exact=True)]
+                if len(matching_gold) == 0:
+                    self.ordered_predictions[span_type]['gold'].append(span.null_span())
+                else:
+                    self.ordered_predictions[span_type]['gold'].append(matching_gold[0])
+
+            # Baseline classification
+            matching_baseline = [baseline_span for baseline_span in baseline_spans if span.span_matches(baseline_span, exact=True)]
             if len(matching_baseline) == 0:
                 self.ordered_predictions[span_type]['baseline'].append(span.null_span())
             else:
                 self.ordered_predictions[span_type]['baseline'].append(matching_baseline[0])
 
-            matching_experimental = [experimental_span for experimental_span in experimental_spans if span.span_matches(experimental_span, exact=False)]
+            # Experimental classification
+            matching_experimental = [experimental_span for experimental_span in experimental_spans if span.span_matches(experimental_span, exact=True)]
             if len(matching_experimental) == 0:
                 self.ordered_predictions[span_type]['experimental'].append(span.null_span())
             else:

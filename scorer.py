@@ -229,7 +229,6 @@ def quote_scores(predicted_quotes, gold_quotes, exact_match=True):
         # Quote attribution precision, recall, f1
         correct_attributions, incorrect_attributions = match_annotated_spans(matched_pred_quotes, matched_gold_quotes, matched=True, incorrect_extractions=false_positives)
         scores['attribution_f1'], scores['attribution_precision'], scores['attribution_recall'] = quote_attribution_scores(predicted_quotes, gold_quotes, correct_attributions, incorrect_attributions)
-        #pdb.set_trace()
 
     groups = {}
     groups['predicted_quotes'] = predicted_quotes

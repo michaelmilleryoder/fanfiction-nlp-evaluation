@@ -48,7 +48,7 @@ def match_annotated_spans(predicted_spans, gold_spans, matched=False, incorrect_
     else:
         matched_gold, matched_predicted = gold_spans, predicted_spans
 
-    incorrect_attributions = incorrect_extractions
+    incorrect_attributions = incorrect_extractions.copy()
 
     # Find matched gold spans
     for pred_span, gold_span in zip(matched_predicted, matched_gold):
@@ -183,9 +183,6 @@ def characters_match(char1, char2):
             * Any part matches and either name has only 1 part (Potter and Harry Potter, e.g.)
             * The number of part matches is higher than half of unique name parts between the 2 characters
     """
-    
-    #predicted_char_parts = predicted_char.lower().split('_')
-    #gold_char_parts = [re.sub(r'[\(\)]', '', part) for part in gold_char.lower().split(' ')]
     honorifics = ['ms.', 'ms',
                     'mr.', 'mr',
                     'mrs.', 'mrs',
@@ -225,7 +222,7 @@ def spans_union(spans_list, exact=True, attribution_conflicts='remove'):
             attribution_conflicts: what do with mismatching attributions {'remove', 'ignore'}
     """
 
-    all_spans = spans_list[0]
+    all_spans = spans_list[0].copy()
     for spans in spans_list[1:]:
         new_spans = []
         mismatched_attributions = []

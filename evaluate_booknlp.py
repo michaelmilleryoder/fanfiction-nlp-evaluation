@@ -13,11 +13,13 @@ import itertools
 import pickle
 from configparser import ConfigParser
 import argparse
+from collections import defaultdict
 
 from evaluator import Evaluator
 from booknlp_output import BookNLPOutput
 from booknlp_wrapper import BookNLPWrapper
 import evaluation_utils as utils
+import scorer
 
 
 class BookNLPEvaluator(Evaluator):
@@ -61,25 +63,62 @@ class BookNLPEvaluator(Evaluator):
 
     def evaluate(self):
         fic_scores = {'coref': [], 'quotes': []} 
+        quote_groups = defaultdict(list)
+
         for fname in sorted(os.listdir(self.token_output_dirpath)):
             fandom_fname = fname.split('.')[0]
             print(fandom_fname)
             sys.stdout.flush()
-            coref_scores, quote_scores = self.evaluate_fic(fandom_fname)
+            coref_scores, quote_scores, fic_quote_groups = self.evaluate_fic(fandom_fname)
             if self.whether_evaluate_coref:
                 fic_scores['coref'].append(coref_scores)
             if self.whether_evaluate_quotes:
                 fic_scores['quotes'].append(quote_scores)
+                for group, values in fic_quote_groups.items():
+                    quote_groups[group].extend(values)
 
         if self.whether_evaluate_coref:
             f1_scores = [scores['lea_f1'] for scores in fic_scores['coref']]
             print(f"Average LEA F1: {np.mean(f1_scores): .2%}")
             self.save_scores(fic_scores['coref'], 'booknlp', ['coref'])
+
         if self.whether_evaluate_quotes:
             attribution_f1_scores = [scores['attribution_f1'] for scores in fic_scores['quotes']]
             print(f"Average attibution F1: {np.mean(attribution_f1_scores): .2%}")
             self.save_scores(fic_scores['quotes'], 
                 'booknlp', ['quotes', f'{self.coref_from}_coref', f'{self.quotes_from}_quotes'])
+
+            aggregate_quote_scores = {}
+            aggregate_quote_scores['extraction_f1'], aggregate_quote_scores['extraction_precision'], aggregate_quote_scores['extraction_recall'] = scorer.quote_extraction_scores(quote_groups['predicted_quotes'], quote_groups['gold_quotes'], quote_groups['matched_pred_quotes'], quote_groups['matched_gold_quotes'], quote_groups['false_positives'], quote_groups['false_negatives'])
+            aggregate_quote_scores['attribution_f1'], aggregate_quote_scores['attribution_precision'], aggregate_quote_scores['attribution_recall'] = scorer.quote_attribution_scores(quote_groups['predicted_quotes'], quote_groups['gold_quotes'], quote_groups['correct_attributions'], quote_groups['incorrect_attributions'])
+            for measure, val in sorted(aggregate_quote_scores.items()):
+                print(f"Overall {measure}: {val: .2%}")
+            pdb.set_trace()
+
+    def evaluate_fic(self, fandom_fname):
+        coref_scores, quote_scores, quote_groups = None, None, None
+        booknlp_output = self.load_fic_output(fandom_fname)
+
+        if self.whether_evaluate_coref:
+            coref_scores = self.evaluate_coref(fandom_fname, booknlp_output)
+            coref_scores['filename'] = fandom_fname
+
+        if self.whether_evaluate_quotes:
+            if self.replace_quotes:
+                booknlp_output.modify_quote_tokens(change_to='match', original_tokenization_dirpath=self.original_tokenization_dirpath)
+
+            if self.coref_from == 'gold':
+                if self.quotes_from == 'gold': # adjust token file to give near-perfect extraction
+                    booknlp_output.modify_quote_tokens(quote_annotations_dirpath=self.quote_annotations_dirpath, quote_annotations_ext=self.quote_annotations_ext, change_to='gold')
+                booknlp_output.modify_coref_tokens(self.coref_annotations_dirpath, self.coref_annotations_ext)
+
+            if self.run_quote_attribution:
+                booknlp_output.run_booknlp_quote_attribution()
+
+            quote_scores, quote_groups = self.evaluate_quotes(fandom_fname, booknlp_output, exact_match=True)
+            quote_scores['filename'] = fandom_fname
+
+        return coref_scores, quote_scores, quote_groups
 
     def load_fic_output(self, fandom_fname, modified=False, align=True):
         """ Loads a fic's BookNLP output.
@@ -103,32 +142,6 @@ class BookNLPEvaluator(Evaluator):
             booknlp_output.align_with_annotations()
 
         return booknlp_output
-
-    def evaluate_fic(self, fandom_fname):
-        coref_scores, quote_scores = None, None
-        booknlp_output = self.load_fic_output(fandom_fname)
-
-        if self.whether_evaluate_coref:
-            coref_scores = self.evaluate_coref(fandom_fname, booknlp_output)
-            coref_scores['filename'] = fandom_fname
-
-        if self.whether_evaluate_quotes:
-            if self.replace_quotes:
-                booknlp_output.modify_quote_tokens(change_to='match', original_tokenization_dirpath=self.original_tokenization_dirpath)
-
-            if self.coref_from == 'gold':
-                if self.quotes_from == 'gold': # adjust token file to give near-perfect extraction
-                    booknlp_output.modify_quote_tokens(quote_annotations_dirpath=self.quote_annotations_dirpath, quote_annotations_ext=self.quote_annotations_ext, change_to='gold')
-                booknlp_output.modify_coref_tokens(self.coref_annotations_dirpath, self.coref_annotations_ext)
-
-            if self.run_quote_attribution:
-                booknlp_output.run_booknlp_quote_attribution()
-
-            quote_scores = self.evaluate_quotes(fandom_fname, booknlp_output, exact_match=True)
-            quote_scores['filename'] = fandom_fname
-
-        return coref_scores, quote_scores
-
 
 def main():
 
